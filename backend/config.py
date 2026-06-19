@@ -30,33 +30,11 @@ class Settings(BaseSettings):
     # Verarbeitung
     workers: int = 8
     snap_limit_m: float = 50.0
-    checkpoint_every: int = 2000
-    max_sync_batch: int = 20000  # Obergrenze für POST /route-batch (sonst Job-Flow nutzen)
+    max_sync_batch: int = 20000  # Obergrenze pro POST /route-batch
 
-    # Verzeichnisse
-    data_dir: Path = Path("data")
-    checkpoint_dir: Path = Path("data/checkpoints")
-
-    # Backend / Frontend
-    api_host: str = "127.0.0.1"
-    api_port: int = 8000
-    backend_url: str = "http://127.0.0.1:8000"
-
-    # Office.js-Add-in (HTTPS, von scripts/serve_addin.sh genutzt)
+    # Backend / Office.js-Add-in (HTTPS, von scripts/serve_addin.sh genutzt)
     addin_host: str = "127.0.0.1"
     addin_port: int = 8443
-
-    @property
-    def upload_dir(self) -> Path:
-        return self.data_dir / "uploads"
-
-    @property
-    def result_dir(self) -> Path:
-        return self.data_dir / "results"
-
-    def ensure_dirs(self) -> None:
-        for d in (self.data_dir, self.checkpoint_dir, self.upload_dir, self.result_dir):
-            d.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

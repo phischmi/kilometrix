@@ -40,33 +40,11 @@ Windows/NAS kopieren. **Wichtig:** Der Graph muss mit derselben osrm-backend-Ver
 gebaut werden wie das `osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` und
 `OSRM_ALGORITHM` (MLD) in `.env` setzen.
 
-## Starten
+## Bedienung: Excel-Add-in (Office.js)
 
-Beide Dienste zusammen via honcho (liest `.env`, Ctrl-C stoppt alles inkl. osrm-routed):
-
-```bash
-./scripts/start.sh        # honcho start  ->  backend (:8000) + frontend (:8501)
-```
-
-Oder einzeln:
-
-```bash
-uvicorn backend.main:app --port 8000     # Backend startet osrm-routed selbst (Port 5001)
-streamlit run frontend/app.py            # Frontend (Upload → Berechnung → Download)
-```
-
-`GET /health` zeigt `engine_ready: true`, sobald `osrm-routed` den Graphen geladen hat.
-Port 5000 ist auf macOS vom AirPlay-Receiver belegt — daher Default `OSRM_ROUTED_PORT=5001`.
-
-Das Frontend dient ausschließlich der Berechnung: Upload, Spalten-Mapping, Fortschritt,
-Download. Eingabe = Excel mit `origin_lat, origin_lon, dest_lat, dest_lon`; Ausgabe =
-dieselbe Tabelle plus `distance_km, duration_min, status, snap_m`.
-
-## Excel-Add-in (Office.js)
-
-Statt Upload/Download lässt sich Kilometrix **direkt in Excel** bedienen: ein Task Pane
-(„Strecken berechnen") liest die Koordinaten aus dem aktiven Blatt, ruft das lokale Backend
-und schreibt `distance_km, duration_min, status, snap_m` in die Nachbarspalten zurück.
+Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechnen") liest die
+Koordinaten aus dem aktiven Blatt, ruft das lokale Backend und schreibt `distance_km,
+duration_min, status, snap_m` in die Nachbarspalten zurück.
 Cross-Platform (Windows/Mac), unabhängig von der VBA-Makro-Policy, vollständig offline.
 
 Architektur: FastAPI liefert das Add-in **selbst über HTTPS** aus (same-origin) und stellt
@@ -75,14 +53,16 @@ gleichzeitig `/route-batch` bereit und startet `osrm-routed` — ein einziger lo
 **Sehr große Blätter:** Das Add-in arbeitet **streamend in Blöcken** (2000 Zeilen): lesen →
 berechnen → zurückschreiben pro Block. Der Speicher bleibt konstant, Teilergebnisse erscheinen
 sofort, der Fortschrittsbalken läuft mit — so sind auch Blätter mit hunderttausenden Zeilen
-ohne Office.js-Payload-Limits machbar. (Für unbeaufsichtigte Massenläufe bleibt zusätzlich der
-Datei-Job-Flow mit serverseitigem Checkpointing.)
+ohne Office.js-Payload-Limits machbar.
 
 **Starten:**
 
 ```bash
 ./scripts/serve_addin.sh     # erzeugt localhost-Zertifikat, HTTPS auf :8443, startet osrm-routed
 ```
+
+`GET /health` zeigt `engine_ready: true`, sobald `osrm-routed` den Graphen geladen hat.
+Port 5000 ist auf macOS vom AirPlay-Receiver belegt — daher Default `OSRM_ROUTED_PORT=5001`.
 
 Add-in liegt dann unter `https://127.0.0.1:8443/addin/taskpane.html`.
 
@@ -108,10 +88,10 @@ einmalig im System/Browser als vertrauenswürdig markiert werden muss.
 Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M365-Admin-Center
 (braucht dann IT). Ändert man Host/Port, müssen die URLs in `addin/manifest.xml` angepasst werden.
 
-## API für Add-ins / Skripte
+## API (für eigene Skripte)
 
-Neben dem Datei-Flow (`/upload` → `/jobs` → Download) gibt es einen direkten
-JSON-Endpoint — gedacht für ein Excel-Add-in (VBA/Office.js) oder eigene Skripte:
+Das Add-in spricht mit dem Backend über einen einzigen JSON-Endpoint, den du auch direkt
+aus eigenen Skripten nutzen kannst:
 
 ```
 POST /route-batch
@@ -131,8 +111,8 @@ POST /route-batch
 ```
 
 Synchron und parallel (8 Worker). Reihenfolge bleibt erhalten, `id` wird durchgereicht.
-Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) — größere Mengen über den Datei-Job-Flow.
-CORS ist offen (lokales Tool), damit auch ein browserbasiertes Office.js-Add-in zugreifen kann.
+Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) pro Request — das Add-in chunkt automatisch
+darunter und kann so beliebig große Blätter verarbeiten.
 
 ## Tests
 
