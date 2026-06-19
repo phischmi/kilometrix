@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kilometrix</title>
+  <link rel="icon" href="assets/icon-32.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="hdr">
+      <div class="hdr__row">
+        <img class="hdr__logo" src="assets/icon-64.png" alt="" />
+        <div>
+          <div class="hdr__title">Kilometrix</div>
+          <div class="hdr__sub">Straßen-Kilometer · offline</div>
+        </div>
+        <span class="status status--off" id="status">
+          <span class="status__dot"></span><span id="statusText">verbinde …</span>
+        </span>
+      </div>
+    </header>
+
+    <main class="body">
+      <!-- 1 · Datenbereich -->
+      <section class="card">
+        <div class="card__head">
+          <span class="card__num">1</span>
+          <span class="card__title">Datenbereich</span>
+          <span class="card__hint" id="rangeAddr">—</span>
+        </div>
+        <div class="seg" role="group" aria-label="Bereich">
+          <button id="segUsed" aria-pressed="true">Ganzes Blatt</button>
+          <button id="segSel" aria-pressed="false">Markierung</button>
+        </div>
+        <div class="range-info">
+          <span>Erkannt:</span><b id="rowCount">0</b><span>Datenzeilen</span>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="hasHeader" checked />
+          Erste Zeile ist Überschrift
+        </label>
+      </section>
+
+      <!-- 2 · Spalten zuordnen -->
+      <section class="card">
+        <div class="card__head">
+          <span class="card__num">2</span>
+          <span class="card__title">Spalten zuordnen</span>
+        </div>
+        <div class="map-grid">
+          <div class="field">
+            <span class="field__label"><span class="pin pin--o"></span>Start · Breite</span>
+            <select id="origin_lat"></select>
+          </div>
+          <div class="field">
+            <span class="field__label"><span class="pin pin--o"></span>Start · Länge</span>
+            <select id="origin_lon"></select>
+          </div>
+          <div class="field">
+            <span class="field__label"><span class="pin pin--d"></span>Ziel · Breite</span>
+            <select id="dest_lat"></select>
+          </div>
+          <div class="field">
+            <span class="field__label"><span class="pin pin--d"></span>Ziel · Länge</span>
+            <select id="dest_lon"></select>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 · Berechnen -->
+      <section class="card">
+        <div class="card__head">
+          <span class="card__num">3</span>
+          <span class="card__title">Berechnen &amp; zurückschreiben</span>
+        </div>
+
+        <button class="run" id="runBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" id="runIcon">
+            <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span id="runLabel">Strecken berechnen</span>
+        </button>
+
+        <div class="progress" id="progress">
+          <div class="progress__bar"><div class="progress__fill" id="progFill"></div></div>
+          <div class="progress__txt">
+            <span id="progLabel">Berechne …</span><span id="progPct">0 %</span>
+          </div>
+        </div>
+
+        <div class="alert" id="alert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span id="alertText"></span>
+        </div>
+      </section>
+
+      <!-- 4 · Ergebnis -->
+      <section class="card results" id="results">
+        <div class="card__head">
+          <span class="card__num">✓</span>
+          <span class="card__title">Ergebnis</span>
+          <span class="card__hint" id="elapsed">—</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat stat--total"><span class="stat__val" id="rTotal">0</span><span class="stat__lbl">Strecken</span></div>
+          <div class="stat stat--ok"><span class="stat__val" id="rOk">0</span><span class="stat__lbl">OK</span></div>
+          <div class="stat stat--far"><span class="stat__val" id="rFar">0</span><span class="stat__lbl">Snap &gt; Limit</span></div>
+          <div class="stat stat--bad"><span class="stat__val" id="rBad">0</span><span class="stat__lbl">ohne Route</span></div>
+        </div>
+        <div class="results__foot">
+          <svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span><b id="writtenCols">4 Spalten</b> ins Blatt geschrieben</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span>OSRM · MLD · lokal</span>
+      <span id="backendUrl"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

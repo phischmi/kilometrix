@@ -1,0 +1,141 @@
+# Kilometrix — OSRM Distanz-Tool
+
+Offline-Berechnung von Straßen-Kilometern und Fahrzeiten für Origin→Destination-Paare
+in Deutschland. Keine externe Routing-API, kein Docker. Routing läuft lokal über
+`osrm-routed` (HTTP), das das Backend selbst als Subprozess startet und stoppt.
+
+> **Engine-Hinweis:** Standard ist `ENGINE=http` (osrm-routed). Die in-process-Variante
+> `ENGINE=bindings` ist vorbereitet, aber das PyPI-Wheel `osrm-bindings` ist archiviert
+> und liegt im Datenformat hinter osrm-backend Stable — es lädt einen mit aktuellem
+> `osrm-backend` gebauten Graphen nicht (Fingerprint-Mismatch). Für in-process wäre ein
+> versionsgleicher Source-Build nötig (`pip install --no-binary osrm-bindings osrm-bindings`).
+
+## Setup
+
+```bash
+# Mac
+brew install osrm-backend                 # liefert osrm-extract/-partition/-customize/-routed + car.lua
+python -m venv venv && source venv/bin/activate
+pip install -e ".[dev]"
+
+# Windows (Scoop)
+scoop install python
+python -m venv venv && venv\Scripts\activate
+pip install -e ".[dev]"
+# osrm-backend-Binaries (inkl. osrm-routed) aus den GitHub-Releases / per Paketmanager bereitstellen.
+```
+
+`.env.example` nach `.env` kopieren und anpassen.
+
+## OSRM-Graph (separat, einmalig)
+
+Der Graph wird **getrennt vom Tool** mit den osrm-backend-CLI-Tools gebaut:
+
+```bash
+./scripts/build_graph.sh        # lädt germany.osm.pbf, erzeugt data/germany.osrm.*
+```
+
+Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf
+Windows/NAS kopieren. **Wichtig:** Der Graph muss mit derselben osrm-backend-Version
+gebaut werden wie das `osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` und
+`OSRM_ALGORITHM` (MLD) in `.env` setzen.
+
+## Starten
+
+Beide Dienste zusammen via honcho (liest `.env`, Ctrl-C stoppt alles inkl. osrm-routed):
+
+```bash
+./scripts/start.sh        # honcho start  ->  backend (:8000) + frontend (:8501)
+```
+
+Oder einzeln:
+
+```bash
+uvicorn backend.main:app --port 8000     # Backend startet osrm-routed selbst (Port 5001)
+streamlit run frontend/app.py            # Frontend (Upload → Berechnung → Download)
+```
+
+`GET /health` zeigt `engine_ready: true`, sobald `osrm-routed` den Graphen geladen hat.
+Port 5000 ist auf macOS vom AirPlay-Receiver belegt — daher Default `OSRM_ROUTED_PORT=5001`.
+
+Das Frontend dient ausschließlich der Berechnung: Upload, Spalten-Mapping, Fortschritt,
+Download. Eingabe = Excel mit `origin_lat, origin_lon, dest_lat, dest_lon`; Ausgabe =
+dieselbe Tabelle plus `distance_km, duration_min, status, snap_m`.
+
+## Excel-Add-in (Office.js)
+
+Statt Upload/Download lässt sich Kilometrix **direkt in Excel** bedienen: ein Task Pane
+(„Strecken berechnen") liest die Koordinaten aus dem aktiven Blatt, ruft das lokale Backend
+und schreibt `distance_km, duration_min, status, snap_m` in die Nachbarspalten zurück.
+Cross-Platform (Windows/Mac), unabhängig von der VBA-Makro-Policy, vollständig offline.
+
+Architektur: FastAPI liefert das Add-in **selbst über HTTPS** aus (same-origin) und stellt
+gleichzeitig `/route-batch` bereit und startet `osrm-routed` — ein einziger lokaler Prozess.
+
+**Sehr große Blätter:** Das Add-in arbeitet **streamend in Blöcken** (2000 Zeilen): lesen →
+berechnen → zurückschreiben pro Block. Der Speicher bleibt konstant, Teilergebnisse erscheinen
+sofort, der Fortschrittsbalken läuft mit — so sind auch Blätter mit hunderttausenden Zeilen
+ohne Office.js-Payload-Limits machbar. (Für unbeaufsichtigte Massenläufe bleibt zusätzlich der
+Datei-Job-Flow mit serverseitigem Checkpointing.)
+
+**Starten:**
+
+```bash
+./scripts/serve_addin.sh     # erzeugt localhost-Zertifikat, HTTPS auf :8443, startet osrm-routed
+```
+
+Add-in liegt dann unter `https://127.0.0.1:8443/addin/taskpane.html`.
+
+**Zertifikat vertrauen (einmalig):** Office lädt das Pane nur über vertrauenswürdiges HTTPS.
+Am einfachsten mit `mkcert` (richtet eine per-User-CA ein, kein Admin):
+
+```bash
+brew install mkcert      # macOS; danach serve_addin.sh erneut starten
+```
+
+Ohne mkcert erzeugt das Skript ein selbstsigniertes Zertifikat (`certs/localhost.pem`), das
+einmalig im System/Browser als vertrauenswürdig markiert werden muss.
+
+**Sideloading (Manifest `addin/manifest.xml`):**
+
+- **macOS:** Manifest nach `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/`
+  kopieren, Excel neu starten → *Einfügen → Meine Add-ins → KILOMETRIX*.
+- **Windows (per-User, kein Admin):** Ordner mit `manifest.xml` als *Vertrauenswürdigen
+  Add-in-Katalog* unter *Datei → Optionen → Trust Center → Vertrauenswürdige Add-in-Kataloge*
+  registrieren (Häkchen „Im Menü anzeigen"), Excel neu starten →
+  *Einfügen → Meine Add-ins → Freigegebener Ordner → Kilometrix*.
+
+Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M365-Admin-Center
+(braucht dann IT). Ändert man Host/Port, müssen die URLs in `addin/manifest.xml` angepasst werden.
+
+## API für Add-ins / Skripte
+
+Neben dem Datei-Flow (`/upload` → `/jobs` → Download) gibt es einen direkten
+JSON-Endpoint — gedacht für ein Excel-Add-in (VBA/Office.js) oder eigene Skripte:
+
+```
+POST /route-batch
+{
+  "pairs": [
+    {"id": "A1", "origin_lat": 52.52, "origin_lon": 13.405,
+     "dest_lat": 48.1372, "dest_lon": 11.5755}
+  ]
+}
+->
+{
+  "results": [
+    {"id": "A1", "distance_km": 585.7, "duration_min": 356.47,
+     "status": "snapped_far", "snap_m": 69.2, "message": null}
+  ]
+}
+```
+
+Synchron und parallel (8 Worker). Reihenfolge bleibt erhalten, `id` wird durchgereicht.
+Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) — größere Mengen über den Datei-Job-Flow.
+CORS ist offen (lokales Tool), damit auch ein browserbasiertes Office.js-Add-in zugreifen kann.
+
+## Tests
+
+```bash
+pytest
+```
