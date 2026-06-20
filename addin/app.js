@@ -22,6 +22,8 @@
       return;
     }
     $("backendUrl").textContent = location.host;
+    applyTheme();
+    watchTheme();
     wireEvents();
     boot();
 
@@ -55,6 +57,30 @@
     $("runBtn").onclick = run;
     $("tokenSave").onclick = onTokenSave;
     $("tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") onTokenSave(); });
+  }
+
+  // ---------- Theme (folgt dem Office-/System-Dark-Mode) ----------
+  function isDarkColor(hex) {
+    if (!hex) return false;
+    const c = String(hex).replace("#", "");
+    const h = c.length >= 6 ? c.slice(-6) : c;
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    if ([r, g, b].some(Number.isNaN)) return false;
+    return 0.299 * r + 0.587 * g + 0.114 * b < 128; // wahrgenommene Helligkeit
+  }
+  function applyTheme() {
+    let dark = null;
+    try {
+      const t = Office.context && Office.context.officeTheme;
+      if (t && t.bodyBackgroundColor) dark = isDarkColor(t.bodyBackgroundColor);
+    } catch {}
+    if (dark === null) document.documentElement.removeAttribute("data-theme"); // OS-Fallback (CSS)
+    else document.documentElement.dataset.theme = dark ? "dark" : "light";
+  }
+  function watchTheme() {
+    try { window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme); } catch {}
+    // Office-Theme-Wechsel greifen, sobald das Pane wieder sichtbar wird
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) applyTheme(); });
   }
 
   // ---------- Token / Zugang ----------
