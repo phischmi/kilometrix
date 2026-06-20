@@ -195,6 +195,21 @@ select:focus { outline: none; border-color: var(--petrol); box-shadow: 0 0 0 3px
 .results__foot b { color: var(--ink); font-weight: 600; }
 .tick { color: var(--green); flex: 0 0 auto; }
 
+/* Icon-Button (Zahnrad) */
+.iconbtn {
+  margin-left: 10px; flex: 0 0 auto; width: 30px; height: 30px; padding: 0;
+  border: 0; background: transparent; color: var(--faint); cursor: pointer;
+  border-radius: 8px; display: grid; place-items: center; transition: color .15s, background .15s;
+}
+.iconbtn:hover { color: var(--petrol); background: var(--petrol-soft); }
+.iconbtn svg { width: 19px; height: 19px; }
+
+/* Einstellungen */
+.set-group { margin-bottom: 16px; }
+.set-title { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 9px; }
+.set-group .check { margin-top: 9px; }
+.set-group .check:first-of-type { margin-top: 0; }
+
 /* Token-Gate */
 .gate__hint { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; line-height: 1.45; }
 .token-input {

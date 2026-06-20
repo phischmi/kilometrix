@@ -6,15 +6,19 @@
   "use strict";
 
   const API = ""; // same-origin: FastAPI liefert dieses Add-in selbst aus
-  const RESULT_COLS = ["distance_km", "duration_min", "status", "snap_m"];
   const TARGETS = ["origin_lat", "origin_lon", "dest_lat", "dest_lon"];
   // Blockgröße fürs Streaming: pro Block wird gelesen → berechnet → zurückgeschrieben.
   // Hält den Speicher konstant und macht das Add-in auch für sehr große Blätter tauglich.
   const BLOCK = 2000;
   const TOKEN_KEY = "kmx_token";
+  const SETTINGS_KEY = "kmx_settings";
 
   const $ = (id) => document.getElementById(id);
   const state = { scope: "used", engineReady: false, authRequired: false, authed: false, ctx: null };
+  const settings = {
+    cols: { distance: true, duration: true, status: true, snap: false },
+    durFormat: "min", // "min" | "hhmm"
+  };
 
   Office.onReady((info) => {
     if (info.host !== Office.HostType.Excel) {
@@ -24,6 +28,7 @@
     $("backendUrl").textContent = location.host;
     applyTheme();
     watchTheme();
+    loadSettings();
     wireEvents();
     boot();
 
@@ -46,7 +51,10 @@
       state.authed = t ? await checkToken(t) : false;
     }
     setGate(!state.authed);
-    if (state.authed) await refreshContext();
+    if (state.authed) {
+      $("settingsBtn").hidden = false;
+      await refreshContext();
+    }
   }
 
   function wireEvents() {
@@ -57,6 +65,60 @@
     $("runBtn").onclick = run;
     $("tokenSave").onclick = onTokenSave;
     $("tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") onTokenSave(); });
+    $("settingsBtn").onclick = openSettings;
+    $("settingsDone").onclick = closeSettings;
+    $("durMin").onclick = () => setDurFormat("min");
+    $("durHhmm").onclick = () => setDurFormat("hhmm");
+    ["col_distance", "col_duration", "col_status", "col_snap"].forEach((id) => ($(id).onchange = readColsFromUI));
+  }
+
+  // ---------- Einstellungen ----------
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
+      if (s && s.cols) { Object.assign(settings.cols, s.cols); settings.durFormat = s.durFormat === "hhmm" ? "hhmm" : "min"; }
+    } catch {}
+    $("col_distance").checked = settings.cols.distance;
+    $("col_duration").checked = settings.cols.duration;
+    $("col_status").checked = settings.cols.status;
+    $("col_snap").checked = settings.cols.snap;
+    setDurFormat(settings.durFormat, false);
+  }
+  const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} };
+
+  function readColsFromUI() {
+    settings.cols.distance = $("col_distance").checked;
+    settings.cols.duration = $("col_duration").checked;
+    settings.cols.status = $("col_status").checked;
+    settings.cols.snap = $("col_snap").checked;
+    saveSettings();
+    updateRunState();
+  }
+  function setDurFormat(fmt, persist = true) {
+    settings.durFormat = fmt === "hhmm" ? "hhmm" : "min";
+    $("durMin").setAttribute("aria-pressed", settings.durFormat === "min");
+    $("durHhmm").setAttribute("aria-pressed", settings.durFormat === "hhmm");
+    if (persist) saveSettings();
+  }
+  function openSettings() { $("settings").hidden = false; $("main").style.display = "none"; }
+  function closeSettings() { $("settings").hidden = true; if (state.authed) $("main").style.display = ""; }
+
+  // Welche Ergebnis-Spalten geschrieben werden (Reihenfolge + Header + Formatierung)
+  function outputSpec() {
+    const spec = [];
+    if (settings.cols.distance) spec.push({ header: "distance_km", val: (r) => numOrBlank(r.distance_km) });
+    if (settings.cols.duration) {
+      if (settings.durFormat === "hhmm") spec.push({ header: "duration_hhmm", val: (r) => hhmm(r.duration_min) });
+      else spec.push({ header: "duration_min", val: (r) => numOrBlank(r.duration_min) });
+    }
+    if (settings.cols.status) spec.push({ header: "status", val: (r) => r.status });
+    if (settings.cols.snap) spec.push({ header: "snap_m", val: (r) => numOrBlank(r.snap_m) });
+    return spec;
+  }
+  function hhmm(min) {
+    if (min == null) return "";
+    const total = Math.round(min);
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
   }
 
   // ---------- Theme (folgt dem Office-/System-Dark-Mode) ----------
@@ -228,7 +290,9 @@
 
   function updateRunState() {
     const c = state.ctx;
-    const ready = state.engineReady && c && c.dataRows > 0 && TARGETS.every((t) => $(t).value !== "");
+    const anyCol = settings.cols.distance || settings.cols.duration || settings.cols.status || settings.cols.snap;
+    const ready =
+      state.engineReady && c && c.dataRows > 0 && anyCol && TARGETS.every((t) => $(t).value !== "");
     $("runBtn").disabled = !ready;
   }
 
@@ -246,9 +310,10 @@
     const startCol = c.columnIndex + c.columnCount;
     const counts = { total: c.dataRows, ok: 0, far: 0, bad: 0 };
     const n = c.dataRows;
+    const spec = outputSpec(); // welche Spalten + Format
 
     try {
-      await writeHeader(c, startCol); // Überschriften einmalig
+      await writeHeader(c, startCol, spec); // Überschriften einmalig
 
       let done = 0;
       setProgress(0, n);
@@ -280,11 +345,11 @@
           else counts.bad++;
         }
 
-        await writeBlock(c, startCol, start, block); // Teilergebnis sofort sichtbar
+        await writeBlock(c, startCol, start, block, spec); // Teilergebnis sofort sichtbar
         done += len;
         setProgress(done, n);
       }
-      summarize(counts, (performance.now() - t0) / 1000);
+      summarize(counts, (performance.now() - t0) / 1000, spec.length);
     } catch (e) {
       showAlert(e && e.message ? e.message : String(e));
     } finally {
@@ -293,12 +358,12 @@
   }
 
   // Überschriften der Ergebnis-Spalten einmalig schreiben
-  async function writeHeader(c, startCol) {
+  async function writeHeader(c, startCol, spec) {
     if (!c.hasHeader) return;
     await Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet();
-      const h = sheet.getRangeByIndexes(c.rowIndex, startCol, 1, 4);
-      h.values = [RESULT_COLS];
+      const h = sheet.getRangeByIndexes(c.rowIndex, startCol, 1, spec.length);
+      h.values = [spec.map((s) => s.header)];
       h.format.font.bold = true;
       await ctx.sync();
     });
@@ -323,14 +388,12 @@
   }
 
   // Ergebnis-Block rechts neben den Bereich schreiben
-  async function writeBlock(c, startCol, start, block) {
+  async function writeBlock(c, startCol, start, block, spec) {
     const dataRow = c.rowIndex + (c.hasHeader ? 1 : 0) + start;
-    const body = block.map((r) => [
-      numOrBlank(r.distance_km), numOrBlank(r.duration_min), r.status, numOrBlank(r.snap_m),
-    ]);
+    const body = block.map((r) => spec.map((s) => s.val(r)));
     await Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet();
-      sheet.getRangeByIndexes(dataRow, startCol, body.length, 4).values = body;
+      sheet.getRangeByIndexes(dataRow, startCol, body.length, spec.length).values = body;
       await ctx.sync();
     });
   }
@@ -354,12 +417,13 @@
     return (await resp.json()).results;
   }
 
-  function summarize(counts, secs) {
+  function summarize(counts, secs, ncols) {
     $("rTotal").textContent = counts.total.toLocaleString("de-DE");
     $("rOk").textContent = counts.ok.toLocaleString("de-DE");
     $("rFar").textContent = counts.far.toLocaleString("de-DE");
     $("rBad").textContent = counts.bad.toLocaleString("de-DE");
     $("elapsed").textContent = secs < 1 ? `${Math.round(secs * 1000)} ms` : `${secs.toFixed(1)} s`;
+    $("writtenCols").textContent = `${ncols} Spalte${ncols === 1 ? "" : "n"}`;
     $("results").classList.add("is-on");
   }
 
