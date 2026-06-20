@@ -17,10 +17,10 @@
   --line: #ededE7;
   --line-2: #e2e3dc;
 
-  --petrol: #0f766e;
-  --petrol-dk: #0c5f58;
-  --petrol-soft: #eef4f2;
-  --amber: #b07815;
+  --petrol: #1d4ed8;
+  --petrol-dk: #1942b0;
+  --petrol-soft: #eaeefc;
+  --amber: #e0466a;
   --green: #1c8a5b;
   --red: #c0432f;
 
@@ -31,31 +31,31 @@
 /* Dark-Mode — folgt dem Office-/System-Theme.
    app.js setzt data-theme nach Office.context.officeTheme; ohne JS greift die Media-Query. */
 :root[data-theme="dark"] {
-  --bg: #0f1715;
-  --ink: #e7ece9;
-  --muted: #9aa49e;
-  --faint: #69736e;
-  --line: #1f2c28;
-  --line-2: #2b3a35;
-  --petrol: #35b6a5;
-  --petrol-dk: #2a988a;
-  --petrol-soft: #16312c;
-  --amber: #d59a35;
+  --bg: #0f141b;
+  --ink: #e8eaef;
+  --muted: #9aa1ac;
+  --faint: #686f7a;
+  --line: #1e2530;
+  --line-2: #2a323e;
+  --petrol: #6b93f5;
+  --petrol-dk: #557fe8;
+  --petrol-soft: #18233b;
+  --amber: #f4768c;
   --green: #36bb80;
   --red: #e26a54;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1715;
-    --ink: #e7ece9;
-    --muted: #9aa49e;
-    --faint: #69736e;
-    --line: #1f2c28;
-    --line-2: #2b3a35;
-    --petrol: #35b6a5;
-    --petrol-dk: #2a988a;
-    --petrol-soft: #16312c;
-    --amber: #d59a35;
+    --bg: #0f141b;
+    --ink: #e8eaef;
+    --muted: #9aa1ac;
+    --faint: #686f7a;
+    --line: #1e2530;
+    --line-2: #2a323e;
+    --petrol: #6b93f5;
+    --petrol-dk: #557fe8;
+    --petrol-soft: #18233b;
+    --amber: #f4768c;
     --green: #36bb80;
     --red: #e26a54;
   }
@@ -63,11 +63,11 @@
 
 /* Dropdown-Pfeil im Dark-Mode aufhellen */
 :root[data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa49e' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa1ac' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa49e' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239aa1ac' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
 }
 
