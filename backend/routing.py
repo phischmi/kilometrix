@@ -1,13 +1,7 @@
 """Routing-Abstraktion.
 
-Schmales Interface mit genau einer Implementierung: in-process über das offizielle
-`osrm-bindings`-Paket. Das Interface ist bewusst klein gehalten, damit später ein
-HTTP-Fallback (`osrm-routed` + httpx) ohne Umbau eingesteckt werden kann.
-
-Verifizierte API von osrm-bindings 0.3.0 (gegen die installierten Stubs geprüft):
-    osrm.OSRM(algorithm='MLD', storage_config='data/germany.osrm')
-    params = osrm.RouteParameters(coordinates=[(lon, lat), (lon, lat)], overview='false')
-    res = inst.Route(params)        # Standard-OSRM-Route-JSON
+Schmales Interface (`RoutingEngine`) mit einer Implementierung: `HttpEngine` fragt einen
+lokalen `osrm-routed` per HTTP ab. OSRM-Route-JSON:
     res['code'] == 'Ok'
     res['routes'][0]['distance']    # Meter
     res['routes'][0]['duration']    # Sekunden
@@ -46,61 +40,6 @@ class RoutingEngine(Protocol):
     def route(self, origin: Coord, dest: Coord) -> RouteResult:
         """Kürzeste Fahrstrecke zwischen origin und dest, jeweils als (lat, lon)."""
         ...
-
-
-class OsrmBindingsEngine:
-    """In-process-Routing über osrm-bindings. Eine geteilte, read-only OSRM-Instanz;
-    OSRM ist für nebenläufige Abfragen ausgelegt, daher thread-safe nutzbar."""
-
-    def __init__(self, graph_path: Path, algorithm: str, snap_limit_m: float) -> None:
-        import osrm  # lazy, damit Tests/Import ohne installiertes Wheel möglich bleiben
-
-        if not _graph_exists(graph_path):
-            raise FileNotFoundError(
-                f"OSRM-Graph nicht gefunden: {graph_path}.* — bitte erst mit "
-                f"scripts/build_graph.sh bauen und nach data/ kopieren."
-            )
-
-        # use_shared_memory=False -> direkt aus den Dateien laden (kein osrm-datastore nötig).
-        self._osrm = osrm.OSRM(
-            algorithm=algorithm,
-            storage_config=str(graph_path),
-            use_shared_memory=False,
-        )
-        self._RouteParameters = osrm.RouteParameters
-        self._snap_limit_m = snap_limit_m
-
-    def route(self, origin: Coord, dest: Coord) -> RouteResult:
-        o_lat, o_lon = origin
-        d_lat, d_lon = dest
-        try:
-            params = self._RouteParameters(
-                coordinates=[(o_lon, o_lat), (d_lon, d_lat)],
-                overview="false",
-                steps=False,
-            )
-            res = self._osrm.Route(params)
-        except Exception as exc:  # eine kaputte Zeile darf den Job nicht killen
-            return RouteResult(None, None, ERROR, message=str(exc))
-
-        return self._parse(res)
-
-    def _parse(self, res: object) -> RouteResult:
-        try:
-            code = res.get("code") if hasattr(res, "get") else res["code"]
-            routes = res["routes"] if "routes" in res else []
-            if code != "Ok" or not routes:
-                return RouteResult(None, None, NO_ROUTE, message=str(code))
-
-            route = routes[0]
-            distance_km = round(float(route["distance"]) / 1000.0, 2)
-            duration_min = round(float(route["duration"]) / 60.0, 2)
-
-            snap_m = _max_snap(res.get("waypoints", []) if hasattr(res, "get") else res["waypoints"])
-            status = SNAPPED_FAR if snap_m is not None and snap_m > self._snap_limit_m else OK
-            return RouteResult(distance_km, duration_min, status, snap_m=snap_m)
-        except Exception as exc:
-            return RouteResult(None, None, ERROR, message=str(exc))
 
 
 class HttpEngine:
@@ -155,7 +94,7 @@ def _max_snap(waypoints: object) -> float | None:
 
 
 def _graph_exists(graph_path: Path) -> bool:
-    # osrm-bindings lädt mehrere Dateien anhand des Basis-Pfads (graph.osrm.*).
+    # osrm-routed lädt mehrere Dateien anhand des Basis-Pfads (graph.osrm.*).
     return graph_path.exists() or any(graph_path.parent.glob(graph_path.name + ".*"))
 
 
@@ -173,12 +112,4 @@ def route_pairs(
 
 
 def get_engine(settings: Settings) -> RoutingEngine:
-    if settings.engine == "http":
-        return HttpEngine(base_url=settings.routed_base_url, snap_limit_m=settings.snap_limit_m)
-    if settings.engine == "bindings":
-        return OsrmBindingsEngine(
-            graph_path=settings.osrm_graph_path,
-            algorithm=settings.osrm_algorithm,
-            snap_limit_m=settings.snap_limit_m,
-        )
-    raise ValueError(f"Unbekannte ENGINE: {settings.engine!r} (erlaubt: 'http', 'bindings').")
+    return HttpEngine(base_url=settings.routed_base_url, snap_limit_m=settings.snap_limit_m)

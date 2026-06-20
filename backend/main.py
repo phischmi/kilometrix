@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     # osrm-routed bei Bedarf starten, dann Engine laden. Fehlt der Graph/das Binary,
     # startet das Backend trotzdem; /route-batch meldet dann 503 mit Hinweis.
     try:
-        if settings.engine == "http" and settings.manage_osrm_routed:
+        if settings.manage_osrm_routed:
             proc = OsrmRoutedProcess(
                 binary=settings.osrm_routed_bin,
                 graph_path=settings.osrm_graph_path,

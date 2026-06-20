@@ -11,12 +11,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Routing-Engine: "http" (osrm-routed Subprozess) oder "bindings" (in-process, optional)
-    engine: str = "http"
+    # OSRM-Graph (vom osrm-routed geladen)
     osrm_graph_path: Path = Path("data/germany.osrm")
     osrm_algorithm: str = "MLD"
 
-    # HTTP-Engine: osrm-routed als lokaler Subprozess
+    # osrm-routed als lokaler Subprozess
     osrm_routed_bin: str = "osrm-routed"
     osrm_routed_host: str = "127.0.0.1"
     osrm_routed_port: int = 5001  # 5000 ist auf macOS vom AirPlay-Receiver belegt

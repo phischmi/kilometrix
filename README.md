@@ -1,14 +1,8 @@
 # Kilometrix — OSRM Distanz-Tool
 
 Offline-Berechnung von Straßen-Kilometern und Fahrzeiten für Origin→Destination-Paare
-in Deutschland. Keine externe Routing-API, kein Docker. Routing läuft lokal über
-`osrm-routed` (HTTP), das das Backend selbst als Subprozess startet und stoppt.
-
-> **Engine-Hinweis:** Standard ist `ENGINE=http` (osrm-routed). Die in-process-Variante
-> `ENGINE=bindings` ist vorbereitet, aber das PyPI-Wheel `osrm-bindings` ist archiviert
-> und liegt im Datenformat hinter osrm-backend Stable — es lädt einen mit aktuellem
-> `osrm-backend` gebauten Graphen nicht (Fingerprint-Mismatch). Für in-process wäre ein
-> versionsgleicher Source-Build nötig (`pip install --no-binary osrm-bindings osrm-bindings`).
+in Deutschland (LKW-optimiert). Keine externe Routing-API. Routing läuft lokal über
+`osrm-routed`, das das Backend selbst als Subprozess startet und stoppt.
 
 ## Setup
 
@@ -29,31 +23,21 @@ pip install -e ".[dev]"
 
 ## OSRM-Graph (separat, einmalig)
 
-Der Graph wird **getrennt vom Tool** mit den osrm-backend-CLI-Tools gebaut:
+Der Graph wird **getrennt vom Tool** mit den osrm-backend-CLI-Tools gebaut — standardmäßig
+mit dem **LKW-Profil** [`profiles/truck.lua`](profiles/truck.lua):
 
 ```bash
-./scripts/build_graph.sh        # lädt germany.osm.pbf, erzeugt data/germany.osrm.*
+./scripts/build_graph.sh        # lädt germany.osm.pbf, baut data/germany.osrm.* (LKW-Profil)
 ```
 
-Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf
-Windows/NAS kopieren. **Wichtig:** Der Graph muss mit derselben osrm-backend-Version
-gebaut werden wie das `osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` und
-`OSRM_ALGORITHM` (MLD) in `.env` setzen.
+`truck.lua` ist von `car.lua` abgeleitet (Maße 4,0 m / 2,55 m / 16,5 m / 40 t, `hgv`-Zugang,
+LKW-Geschwindigkeiten, Tempo-Limit 89). Das Skript kopiert das Profil neben das von
+osrm-backend mitgelieferte `car.lua`, damit dessen `lib/` gefunden wird (`car.lua` dient nur
+noch als lib-Quelle). Anderes Profil: `OSRM_PROFILE=<pfad> ./scripts/build_graph.sh`.
 
-### LKW-Graph (Truck-Profil)
-
-Für LKW-optimiertes Routing wird der Graph mit [`profiles/truck.lua`](profiles/truck.lua)
-gebaut (von `car.lua` abgeleitet: Maße 4,0 m / 2,55 m / 16,5 m / 40 t, `hgv`-Zugang,
-LKW-Geschwindigkeiten, Tempo-Limit 89). Das Skript kopiert das Profil neben das
-mitgelieferte `car.lua`, damit dessen `lib/` gefunden wird:
-
-```bash
-PROFILE_FILE=profiles/truck.lua ./scripts/build_graph.sh   # ersetzt data/germany.osrm.*
-```
-
-Danach den Graphen wie üblich aufs NAS kopieren und den Stack neu starten. Das übrige
-Setup (osrm-routed `--algorithm mld`, Add-in) bleibt unverändert — die ganze App nutzt
-dann das LKW-Profil.
+Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf Windows/NAS kopieren.
+**Wichtig:** Der Graph muss mit derselben osrm-backend-Version gebaut werden wie das
+`osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` / `OSRM_ALGORITHM` (MLD) in `.env` setzen.
 
 > **Hinweis:** `truck.lua` ist ein **Startprofil** — Syntax geprüft, aber vor dem
 > Produktiveinsatz an echten Routen verifizieren und Maße/Gewicht ggf. an die Flotte

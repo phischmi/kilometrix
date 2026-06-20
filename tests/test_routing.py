@@ -1,4 +1,4 @@
-"""Parsing-/Status-Logik der OsrmBindingsEngine ohne echten Graph.
+"""Parsing-/Status-Logik der HttpEngine ohne echten osrm-routed.
 
 Wir umgehen __init__ (object.__new__) und füttern _parse mit OSRM-Standard-JSON-Fixtures.
 """
@@ -9,14 +9,13 @@ from backend.routing import (
     OK,
     SNAPPED_FAR,
     HttpEngine,
-    OsrmBindingsEngine,
     RouteResult,
     route_pairs,
 )
 
 
-def make_engine(snap_limit_m: float = 50.0) -> OsrmBindingsEngine:
-    eng = object.__new__(OsrmBindingsEngine)
+def make_engine(snap_limit_m: float = 50.0) -> HttpEngine:
+    eng = object.__new__(HttpEngine)
     eng._snap_limit_m = snap_limit_m
     return eng
 
@@ -60,32 +59,6 @@ def test_parse_error_on_garbage():
     eng = make_engine()
     res = eng._parse({"code": "Ok", "routes": [{"distance": "x"}], "waypoints": []})
     assert res.status == ERROR
-
-
-def make_http_engine(snap_limit_m: float = 50.0) -> HttpEngine:
-    eng = object.__new__(HttpEngine)
-    eng._snap_limit_m = snap_limit_m
-    return eng
-
-
-def test_http_parse_ok():
-    eng = make_http_engine()
-    res = eng._parse(
-        {
-            "code": "Ok",
-            "routes": [{"distance": 585700.0, "duration": 21390.0}],
-            "waypoints": [{"distance": 4.0}, {"distance": 9.0}],
-        }
-    )
-    assert res.status == OK
-    assert res.distance_km == 585.7
-    assert res.snap_m == 9.0
-
-
-def test_http_parse_no_route():
-    eng = make_http_engine()
-    res = eng._parse({"code": "NoRoute", "routes": [], "waypoints": []})
-    assert res.status == NO_ROUTE
 
 
 class _OrderEngine:

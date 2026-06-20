@@ -23,7 +23,6 @@ services:
   kilometrix-app:
     build: .
     environment:
-      ENGINE: "http"
       MANAGE_OSRM_ROUTED: "false"
       OSRM_ROUTED_URL: "http://kilometrix-osrm:5000"
       WORKERS: "8"

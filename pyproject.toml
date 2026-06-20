@@ -12,12 +12,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# In-process-Engine. Achtung: das PyPI-Wheel ist archiviert und 135 Commits hinter
-# osrm-backend Stable; für eine zum Graphen passende Version Source-Build nötig:
-#   pip install --no-binary osrm-bindings osrm-bindings
-bindings = [
-    "osrm-bindings>=0.3.0",
-]
 dev = [
     "pytest>=8.0",
 ]

@@ -48,13 +48,12 @@ braucht die CLI-Binaries und ist der speicherhungrige Teil:
   mit dem meisten freien RAM), dann auf Mac/Windows/NAS kopieren und nur abfragen.
 
 ### Routing-Strategie
-- **Genutzt: `osrm-routed`** (`ENGINE=http`) als lokaler Subprozess (vom Backend verwaltet),
-  Abfrage per HTTP (`httpx`) auf `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`.
-  Robust, gut dokumentiert, ohne Docker.
-- **Nicht genutzt (Steckplatz):** in-process `osrm-bindings` (`ENGINE=bindings`). Das PyPI-Wheel
-  ist archiviert und im Datenformat ~135 Commits hinter osrm-backend Stable → lädt einen mit
-  aktuellem `osrm-backend` gebauten Graphen nicht (Fingerprint-Mismatch). Nur via versionsgleichem
-  Source-Build nutzbar. Engine steckt hinter `RoutingEngine` (routing.py), bleibt also tauschbar.
+- **`osrm-routed`** als lokaler Subprozess (vom Backend verwaltet), Abfrage per HTTP (`httpx`)
+  auf `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`. Hinter dem schmalen
+  Interface `RoutingEngine` (routing.py) → `HttpEngine`.
+- Die in-process `osrm-bindings` wurden entfernt (archiviertes Wheel, Fingerprint-Mismatch zum
+  aktuell gebauten Graphen — unbrauchbar).
+- Graph standardmäßig mit **LKW-Profil** `profiles/truck.lua` gebaut (von car.lua abgeleitet).
 
 ## Datenfluss (Office.js-Add-in)
 1. Task Pane öffnen; Bereich (ganzes Blatt / Markierung) + Spalten-Mapping wählen
