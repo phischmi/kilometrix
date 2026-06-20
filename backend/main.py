@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,20 @@ from pydantic import BaseModel
 from backend.config import get_settings
 from backend.osrm_process import OsrmRoutedProcess
 from backend.routing import get_engine, route_pairs
+from backend.tokens import TokenError, verify
+
+
+def require_token(authorization: str | None = Header(default=None)) -> dict | None:
+    """Bearer-Token prüfen, falls Auth aktiv. Lokal (auth_enabled=False) ein No-op."""
+    settings = get_settings()
+    if not settings.auth_enabled:
+        return None
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Zugangstoken fehlt.")
+    try:
+        return verify(settings.auth_secret, authorization.split(" ", 1)[1].strip())
+    except TokenError as exc:
+        raise HTTPException(status_code=401, detail=f"Token ungültig: {exc}")
 
 
 @asynccontextmanager
@@ -89,11 +103,20 @@ def health() -> dict:
         "status": "ok",
         "engine_ready": app.state.engine is not None,
         "engine_error": app.state.engine_error,
+        "auth_required": get_settings().auth_enabled,
     }
 
 
+@app.get("/auth/check")
+def auth_check(claims: dict | None = Depends(require_token)) -> dict:
+    """Vom Add-in genutzt, um ein Token zu validieren (gibt Name + Ablauf zurück)."""
+    if claims is None:
+        return {"auth_required": False}
+    return {"auth_required": True, "name": claims.get("sub"), "exp": claims.get("exp")}
+
+
 @app.post("/route-batch")
-def route_batch(req: RouteBatchRequest) -> dict:
+def route_batch(req: RouteBatchRequest, claims: dict | None = Depends(require_token)) -> dict:
     """JSON rein → JSON raus, synchron und parallel über die Engine.
     Das Add-in ruft diesen Endpoint blockweise auf (Reihenfolge bleibt erhalten)."""
     settings = app.state.settings

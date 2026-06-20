@@ -1,5 +1,6 @@
-/* Kilometrix Office.js Add-in — liest Koordinaten, ruft das lokale Backend
-   (/route-batch, same-origin HTTPS) und schreibt Ergebnisse ins Blatt zurück. */
+/* Kilometrix Office.js Add-in — liest Koordinaten, ruft das Backend
+   (/route-batch, same-origin) und schreibt Ergebnisse ins Blatt zurück.
+   Bei tokengeschütztem Server: Token-Gate + Bearer-Auth. */
 
 (() => {
   "use strict";
@@ -10,9 +11,10 @@
   // Blockgröße fürs Streaming: pro Block wird gelesen → berechnet → zurückgeschrieben.
   // Hält den Speicher konstant und macht das Add-in auch für sehr große Blätter tauglich.
   const BLOCK = 2000;
+  const TOKEN_KEY = "kmx_token";
 
   const $ = (id) => document.getElementById(id);
-  const state = { scope: "used", engineReady: false, ctx: null };
+  const state = { scope: "used", engineReady: false, authRequired: false, authed: false, ctx: null };
 
   Office.onReady((info) => {
     if (info.host !== Office.HostType.Excel) {
@@ -21,17 +23,29 @@
     }
     $("backendUrl").textContent = location.host;
     wireEvents();
-    checkHealth();
-    refreshContext();
+    boot();
 
     // bei Auswahländerung im Markierungs-Modus live aktualisieren
     Excel.run(async (ctx) => {
       ctx.workbook.worksheets.getActiveWorksheet().onSelectionChanged.add(async () => {
-        if (state.scope === "selection") refreshContext();
+        if (state.authed && state.scope === "selection") refreshContext();
       });
       await ctx.sync();
     }).catch(() => {});
   });
+
+  // Reihenfolge: Status prüfen → ggf. Token-Gate → Tabellenkontext laden
+  async function boot() {
+    await checkHealth();
+    if (!state.authRequired) {
+      state.authed = true;
+    } else {
+      const t = getToken();
+      state.authed = t ? await checkToken(t) : false;
+    }
+    setGate(!state.authed);
+    if (state.authed) await refreshContext();
+  }
 
   function wireEvents() {
     $("segUsed").onclick = () => setScope("used");
@@ -39,6 +53,44 @@
     $("hasHeader").onchange = refreshContext;
     TARGETS.forEach((t) => ($(t).onchange = updateRunState));
     $("runBtn").onclick = run;
+    $("tokenSave").onclick = onTokenSave;
+    $("tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") onTokenSave(); });
+  }
+
+  // ---------- Token / Zugang ----------
+  const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } };
+  const setTok = (t) => { try { localStorage.setItem(TOKEN_KEY, t); } catch {} };
+  const authHeaders = () => { const t = getToken(); return t ? { Authorization: `Bearer ${t}` } : {}; };
+
+  function setGate(locked) {
+    $("gate").hidden = !locked;
+    $("main").style.display = locked ? "none" : "";
+  }
+
+  async function checkToken(token) {
+    try {
+      const r = await fetch(`${API}/auth/check`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return false;
+      const d = await r.json();
+      state.tokenName = d.name;
+      if (d.name) $("backendUrl").textContent = `${location.host} · ${d.name}`;
+      return true;
+    } catch { return false; }
+  }
+
+  async function onTokenSave() {
+    $("gateAlert").classList.remove("is-on");
+    const t = $("tokenInput").value.trim();
+    if (!t) return;
+    if (await checkToken(t)) {
+      setTok(t);
+      state.authed = true;
+      setGate(false);
+      await refreshContext();
+    } else {
+      $("gateAlertText").textContent = "Token ungültig oder abgelaufen.";
+      $("gateAlert").classList.add("is-on");
+    }
   }
 
   function setScope(scope) {
@@ -53,6 +105,7 @@
     try {
       const h = await (await fetch(`${API}/health`)).json();
       state.engineReady = !!h.engine_ready;
+      state.authRequired = !!h.auth_required;
       const el = $("status");
       if (state.engineReady) {
         el.className = "status status--ready";
@@ -259,9 +312,14 @@
   async function postBatch(pairs) {
     const resp = await fetch(`${API}/route-batch`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ pairs }),
     });
+    if (resp.status === 401) {
+      state.authed = false;
+      setGate(true);
+      throw new Error("Zugangstoken abgelaufen — bitte neu verbinden.");
+    }
     if (!resp.ok) {
       let detail = `HTTP ${resp.status}`;
       try { detail = (await resp.json()).detail || detail; } catch {}

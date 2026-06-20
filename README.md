@@ -101,6 +101,39 @@ auf dem **Start-Reiter** ein — dort ist der Einstieg (nicht unter „Einfügen
 Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M365-Admin-Center
 (braucht dann IT). Ändert man Host/Port, müssen die URLs in `addin/manifest.xml` angepasst werden.
 
+## Zentraler Betrieb (Docker, PoC)
+
+Statt auf jedem Laptop lokal kann das Backend zentral laufen (z. B. NAS hinter Traefik mit
+Let's Encrypt). Vorteile: **echtes TLS** (kein mkcert pro Gerät), **zentrale Add-in-Verteilung**
+übers M365-Admin-Center, ein gepflegter Graph. `docker-compose.yml` startet zwei Container:
+`osrm` (offizielles Image, lädt den Graphen) + `app` (FastAPI, hinter Traefik).
+
+```bash
+# .env anlegen
+echo "AUTH_SECRET=$(openssl rand -hex 32)" >> .env
+
+# data/germany.osrm.* muss daneben liegen (v26.6.5 passt zum Default-Image — kein Neubau)
+docker compose up -d --build
+
+# Zugangstoken erzeugen (TTL frei wählbar) und an den Nutzer geben
+docker compose exec app python -m backend.tokens create --name philipp --days 90
+```
+
+In `docker-compose.yml` ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)
+an deine Traefik-Instanz anpassen; die Domain (`kilometrix.philipp-schmidt.de`) steht in den
+Router-Labels und im `addin/manifest.server.xml`.
+
+**Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, definierbare TTL,
+ohne DB) geschützt. Beim ersten Öffnen fragt das Add-in das Token ab (Gate), speichert es lokal
+und sendet es fortan automatisch. Widerruf = `AUTH_SECRET` rotieren.
+
+**Add-in verteilen:** `addin/manifest.server.xml` (zeigt auf die Domain) per M365-Admin-Center
+zentral ausrollen — dann erscheint Kilometrix bei den zugewiesenen Nutzern ohne Sideloading.
+
+> **Datenschutz-Hinweis:** Für den echten Firmen-Rollout sollte der Server **von der Firma
+> gehostet** sein (On-Prem/Firmen-Cloud), nicht im privaten Homelab — es laufen Firmen-Koordinaten
+> darüber. Das Homelab ist ideal fürs PoC.
+
 ## API (für eigene Skripte)
 
 Das Add-in spricht mit dem Backend über einen einzigen JSON-Endpoint, den du auch direkt
@@ -126,6 +159,9 @@ POST /route-batch
 Synchron und parallel (8 Worker). Reihenfolge bleibt erhalten, `id` wird durchgereicht.
 Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) pro Request — das Add-in chunkt automatisch
 darunter und kann so beliebig große Blätter verarbeiten.
+
+Bei `AUTH_ENABLED=true` (zentraler Betrieb) muss der Header `Authorization: Bearer <token>`
+mitgesendet werden (`GET /auth/check` validiert ein Token). Lokal ist Auth aus.
 
 ## Tests
 

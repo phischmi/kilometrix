@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     snap_limit_m: float = 50.0
     max_sync_batch: int = 20000  # Obergrenze pro POST /route-batch
 
+    # Auth (für zentralen Betrieb hinter Reverse Proxy). Lokal aus = offen.
+    auth_enabled: bool = False
+    auth_secret: str = ""  # HMAC-Secret für signierte Tokens (siehe backend/tokens.py)
+
     # Backend / Office.js-Add-in (HTTPS, von scripts/serve_addin.sh genutzt)
     addin_host: str = "127.0.0.1"
     addin_port: int = 8443

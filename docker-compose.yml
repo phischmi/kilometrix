@@ -1,0 +1,47 @@
+# Kilometrix — zentraler Betrieb (PoC) hinter Traefik mit Let's Encrypt.
+#
+# Voraussetzungen:
+#   - Traefik läuft bereits auf dem NAS und terminiert TLS (externes Docker-Netz).
+#   - data/germany.osrm.* liegt neben dieser Datei (mit derselben osrm-backend-Version
+#     gebaut wie OSRM_IMAGE — v26.6.5 passt zum vorhandenen Graphen).
+#   - .env enthält AUTH_SECRET (z. B.  openssl rand -hex 32).
+#
+# Anpassen an deine Traefik-Instanz: Netzwerk-Name (hier "traefik") und
+# certresolver-Name (hier "letsencrypt").
+
+services:
+  osrm:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v26.6.5-debian}
+    command: ["osrm-routed", "--algorithm", "mld", "/data/germany.osrm"]
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped
+    # kein Port nach außen — nur intern für die App erreichbar
+
+  app:
+    build: .
+    environment:
+      ENGINE: "http"
+      MANAGE_OSRM_ROUTED: "false"
+      OSRM_ROUTED_URL: "http://osrm:5000"
+      WORKERS: "8"
+      SNAP_LIMIT_M: "50"
+      AUTH_ENABLED: "true"
+      AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET muss in .env gesetzt sein}"
+    depends_on:
+      - osrm
+    restart: unless-stopped
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.kilometrix.rule=Host(`kilometrix.philipp-schmidt.de`)"
+      - "traefik.http.routers.kilometrix.entrypoints=websecure"
+      - "traefik.http.routers.kilometrix.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kilometrix.loadbalancer.server.port=8000"
+
+networks:
+  traefik:
+    external: true
