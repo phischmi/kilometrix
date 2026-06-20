@@ -13,7 +13,9 @@ $DataDir = Join-Path $Root "data"
 $PbfUrl = if ($env:PBF_URL) { $env:PBF_URL } else { "https://download.geofabrik.de/europe/germany-latest.osm.pbf" }
 $Pbf = Join-Path $DataDir "germany-latest.osm.pbf"
 $Base = Join-Path $DataDir "germany.osrm"
-$Profile = if ($env:OSRM_PROFILE) { $env:OSRM_PROFILE } else { "car.lua" }
+# Eigenes Profil (z. B. LKW) via $env:PROFILE_FILE — muss neben dem mitgelieferten
+# car.lua / dem lib-Ordner liegen, damit `require "lib/..."` aufgeht.
+$Profile = if ($env:PROFILE_FILE) { $env:PROFILE_FILE } elseif ($env:OSRM_PROFILE) { $env:OSRM_PROFILE } else { "car.lua" }
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 

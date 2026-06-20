@@ -33,6 +33,16 @@ if [[ ! -f "${PBF}" ]]; then
   curl -L --fail -o "${PBF}" "${PBF_URL}"
 fi
 
+# Optionales eigenes Profil (z. B. LKW):  PROFILE_FILE=profiles/truck.lua ./scripts/build_graph.sh
+# Es wird neben das mitgelieferte car.lua kopiert, damit `require "lib/..."` aufgeht.
+if [[ -n "${PROFILE_FILE:-}" ]]; then
+  [[ "${PROFILE_FILE}" = /* ]] || PROFILE_FILE="${ROOT}/${PROFILE_FILE}"
+  PROFILE_DIR="$(dirname "${PROFILE}")"
+  cp "${PROFILE_FILE}" "${PROFILE_DIR}/"
+  PROFILE="${PROFILE_DIR}/$(basename "${PROFILE_FILE}")"
+  echo "==> Eigenes Profil verwendet: ${PROFILE}"
+fi
+
 echo "==> osrm-extract (Profil: ${PROFILE})"
 osrm-extract -p "${PROFILE}" "${PBF}"
 

@@ -40,6 +40,26 @@ Windows/NAS kopieren. **Wichtig:** Der Graph muss mit derselben osrm-backend-Ver
 gebaut werden wie das `osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` und
 `OSRM_ALGORITHM` (MLD) in `.env` setzen.
 
+### LKW-Graph (Truck-Profil)
+
+Für LKW-optimiertes Routing wird der Graph mit [`profiles/truck.lua`](profiles/truck.lua)
+gebaut (von `car.lua` abgeleitet: Maße 4,0 m / 2,55 m / 16,5 m / 40 t, `hgv`-Zugang,
+LKW-Geschwindigkeiten, Tempo-Limit 89). Das Skript kopiert das Profil neben das
+mitgelieferte `car.lua`, damit dessen `lib/` gefunden wird:
+
+```bash
+PROFILE_FILE=profiles/truck.lua ./scripts/build_graph.sh   # ersetzt data/germany.osrm.*
+```
+
+Danach den Graphen wie üblich aufs NAS kopieren und den Stack neu starten. Das übrige
+Setup (osrm-routed `--algorithm mld`, Add-in) bleibt unverändert — die ganze App nutzt
+dann das LKW-Profil.
+
+> **Hinweis:** `truck.lua` ist ein **Startprofil** — Syntax geprüft, aber vor dem
+> Produktiveinsatz an echten Routen verifizieren und Maße/Gewicht ggf. an die Flotte
+> anpassen. OSRM ist „truck-aware" (HGV-Sperren, Maß-/Gewichtsbeschränkungen aus OSM),
+> aber kein Voll-Truck-Router — die Genauigkeit hängt an den OSM-Daten.
+
 ## Bedienung: Excel-Add-in (Office.js)
 
 Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechnen") liest die
