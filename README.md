@@ -58,32 +58,45 @@ ohne Office.js-Payload-Limits machbar.
 **Starten:**
 
 ```bash
-./scripts/serve_addin.sh     # erzeugt localhost-Zertifikat, HTTPS auf :8443, startet osrm-routed
+# macOS/Linux
+./scripts/serve_addin.sh        # erzeugt localhost-Zertifikat, HTTPS auf :8443, startet osrm-routed
+
+# Windows (PowerShell)
+.\scripts\serve_addin.ps1
 ```
 
 `GET /health` zeigt `engine_ready: true`, sobald `osrm-routed` den Graphen geladen hat.
 Port 5000 ist auf macOS vom AirPlay-Receiver belegt — daher Default `OSRM_ROUTED_PORT=5001`.
-
 Add-in liegt dann unter `https://127.0.0.1:8443/addin/taskpane.html`.
 
-**Zertifikat vertrauen (einmalig):** Office lädt das Pane nur über vertrauenswürdiges HTTPS.
-Am einfachsten mit `mkcert` (richtet eine per-User-CA ein, kein Admin):
+**Zertifikat vertrauen (einmalig):** Office lädt das Pane nur über vertrauenswürdiges HTTPS
+(macOS: Keychain, Windows: Zertifikatspeicher / WebView2). Am einfachsten mit `mkcert` — richtet
+eine **per-User-CA ein, ohne Admin**:
 
 ```bash
-brew install mkcert      # macOS; danach serve_addin.sh erneut starten
+brew install mkcert      # macOS
+scoop install mkcert     # Windows
 ```
 
-Ohne mkcert erzeugt das Skript ein selbstsigniertes Zertifikat (`certs/localhost.pem`), das
-einmalig im System/Browser als vertrauenswürdig markiert werden muss.
+Danach das Serve-Skript erneut starten. Ohne mkcert wird ein selbstsigniertes Zertifikat
+(`certs/localhost.pem`) erzeugt; die `.ps1` importiert es unter Windows automatisch in
+`Cert:\CurrentUser\Root` (kein Admin), auf macOS muss es einmalig manuell vertraut werden.
 
 **Sideloading (Manifest `addin/manifest.xml`):**
 
-- **macOS:** Manifest nach `~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/`
-  kopieren, Excel neu starten → *Einfügen → Meine Add-ins → KILOMETRIX*.
+- **macOS:** den `wef`-Ordner anlegen (existiert standardmäßig nicht) und das Manifest
+  hineinkopieren, dann **Excel komplett beenden (⌘Q) und neu öffnen**:
+  ```bash
+  mkdir -p ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef
+  cp addin/manifest.xml ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/
+  ```
 - **Windows (per-User, kein Admin):** Ordner mit `manifest.xml` als *Vertrauenswürdigen
   Add-in-Katalog* unter *Datei → Optionen → Trust Center → Vertrauenswürdige Add-in-Kataloge*
   registrieren (Häkchen „Im Menü anzeigen"), Excel neu starten →
-  *Einfügen → Meine Add-ins → Freigegebener Ordner → Kilometrix*.
+  *Einfügen → Add-Ins → Freigegebener Ordner → Kilometrix*.
+
+Das Add-in fügt eine eigene Gruppe **„Kilometrix"** mit dem Button **„Strecken berechnen"**
+auf dem **Start-Reiter** ein — dort ist der Einstieg (nicht unter „Einfügen → Meine Add-ins").
 
 Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M365-Admin-Center
 (braucht dann IT). Ändert man Host/Port, müssen die URLs in `addin/manifest.xml` angepasst werden.
