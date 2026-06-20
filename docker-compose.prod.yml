@@ -1,15 +1,12 @@
-# Kilometrix — zentraler Betrieb (PoC) hinter Traefik mit Let's Encrypt.
-# Diese Variante BAUT das App-Image lokal (build: .). Wer das Image aus GHCR ziehen
-# will (CI-Build), nutzt stattdessen docker-compose.prod.yml.
+# Kilometrix — Prod-Variante: zieht das App-Image aus GHCR (von GitHub Actions gebaut),
+# baut also NICHTS auf dem NAS. Der Quellcode muss dafür nicht aufs NAS — nur diese Datei,
+# .env und der Graph (data/germany.osrm.*).
 #
-# Voraussetzungen:
-#   - Traefik läuft bereits auf dem NAS und terminiert TLS (externes Docker-Netz).
-#   - data/germany.osrm.* liegt neben dieser Datei (mit derselben osrm-backend-Version
-#     gebaut wie OSRM_IMAGE — v26.6.5 passt zum vorhandenen Graphen).
-#   - .env enthält AUTH_SECRET (z. B.  openssl rand -hex 32).
+#   docker login ghcr.io -u phischmi          # einmalig (PAT mit read:packages)
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
 #
-# Anpassen an deine Traefik-Instanz: Netzwerk-Name (hier "traefik") und
-# certresolver-Name (hier "letsencrypt").
+# Traefik-Netz/certresolver wie in docker-compose.yml an deine Instanz anpassen.
 
 services:
   kilometrix-osrm:
@@ -18,10 +15,10 @@ services:
     volumes:
       - ./data:/data:ro
     restart: unless-stopped
-    # kein Port nach außen — nur intern für die App erreichbar
 
   kilometrix-app:
-    build: .
+    image: ${KILOMETRIX_IMAGE:-ghcr.io/phischmi/kilometrix:latest}
+    pull_policy: always
     environment:
       ENGINE: "http"
       MANAGE_OSRM_ROUTED: "false"

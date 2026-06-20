@@ -106,22 +106,33 @@ Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M
 Statt auf jedem Laptop lokal kann das Backend zentral laufen (z. B. NAS hinter Traefik mit
 Let's Encrypt). Vorteile: **echtes TLS** (kein mkcert pro Gerät), **zentrale Add-in-Verteilung**
 übers M365-Admin-Center, ein gepflegter Graph. `docker-compose.yml` startet zwei Container:
-`osrm` (offizielles Image, lädt den Graphen) + `app` (FastAPI, hinter Traefik).
+`kilometrix-osrm` (offizielles Image, lädt den Graphen) + `kilometrix-app` (FastAPI, hinter Traefik).
+
+**Variante A — Image aus GHCR ziehen (empfohlen, kein Build auf dem NAS).**
+GitHub Actions ([.github/workflows/docker.yml](.github/workflows/docker.yml)) baut bei jedem Push
+auf `main` das Image und pusht es nach `ghcr.io/phischmi/kilometrix`. Auf dem NAS reichen dann
+`docker-compose.prod.yml`, `.env` und der Graph — **kein Quellcode, kein git**:
 
 ```bash
-# .env anlegen
-echo "AUTH_SECRET=$(openssl rand -hex 32)" >> .env
-
-# data/germany.osrm.* muss daneben liegen (v26.6.5 passt zum Default-Image — kein Neubau)
-docker compose up -d --build
-
-# Zugangstoken erzeugen (TTL frei wählbar) und an den Nutzer geben
-docker compose exec app python -m backend.tokens create --name philipp --days 90
+echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* muss daneben liegen
+docker login ghcr.io -u phischmi                        # einmalig (PAT mit read:packages)
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml exec kilometrix-app python -m backend.tokens create --name philipp --days 90
 ```
 
-In `docker-compose.yml` ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)
+**Variante B — lokal auf dem NAS bauen** (`docker-compose.yml`, braucht den Quellcode dort):
+
+```bash
+echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env
+docker compose up -d --build
+docker compose exec kilometrix-app python -m backend.tokens create --name philipp --days 90
+```
+
+In beiden Compose-Dateien ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)
 an deine Traefik-Instanz anpassen; die Domain (`kilometrix.philipp-schmidt.de`) steht in den
-Router-Labels und im `addin/manifest.server.xml`.
+Router-Labels und im `addin/manifest.server.xml`. (Ist das GHCR-Paket privat, braucht das NAS
+einmalig `docker login ghcr.io`.)
 
 **Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, definierbare TTL,
 ohne DB) geschützt. Beim ersten Öffnen fragt das Add-in das Token ab (Gate), speichert es lokal
