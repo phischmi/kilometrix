@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
                 algorithm=settings.osrm_algorithm,
                 host=settings.osrm_routed_host,
                 port=settings.osrm_routed_port,
+                verbosity=settings.osrm_routed_verbosity,
             )
             proc.start()
             app.state.osrm_proc = proc

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     osrm_routed_port: int = 5001  # 5000 ist auf macOS vom AirPlay-Receiver belegt
     manage_osrm_routed: bool = True  # False = bereits laufenden osrm-routed nutzen
     osrm_routed_url: str | None = None  # expliziter Override; sonst host:port
+    # WARNING unterdrückt die INFO-Request-Logs (die Koordinaten enthalten).
+    osrm_routed_verbosity: str = "WARNING"
 
     @property
     def routed_base_url(self) -> str:

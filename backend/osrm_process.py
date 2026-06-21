@@ -20,12 +20,14 @@ class OsrmRoutedProcess:
         algorithm: str,
         host: str,
         port: int,
+        verbosity: str = "WARNING",
     ) -> None:
         self._binary = binary
         self._graph_path = graph_path
         self._algorithm = algorithm.lower()
         self._host = host
         self._port = port
+        self._verbosity = verbosity
         self._proc: subprocess.Popen | None = None
 
     @property
@@ -48,6 +50,8 @@ class OsrmRoutedProcess:
                 self._binary,
                 "--algorithm",
                 self._algorithm,
+                "--verbosity",
+                self._verbosity,  # WARNING: keine Koordinaten-Logs
                 "--ip",
                 self._host,
                 "--port",
