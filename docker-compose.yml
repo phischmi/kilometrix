@@ -14,6 +14,7 @@
 services:
   kilometrix-osrm:
     image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v26.6.5-debian}
+    container_name: kilometrix-osrm
     command: ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "/data/germany.osrm"]
     volumes:
       - ./data:/data:ro
@@ -22,6 +23,7 @@ services:
 
   kilometrix-app:
     build: .
+    container_name: kilometrix-app
     environment:
       MANAGE_OSRM_ROUTED: "false"
       OSRM_ROUTED_URL: "http://kilometrix-osrm:5000"
