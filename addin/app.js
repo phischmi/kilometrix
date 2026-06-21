@@ -401,22 +401,44 @@
   }
 
   async function postBatch(pairs) {
-    const resp = await fetch(`${API}/route-batch`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeaders() },
-      body: JSON.stringify({ pairs }),
-    });
-    if (resp.status === 401) {
-      state.authed = false;
-      setGate(true);
-      throw new Error("Zugangstoken abgelaufen — bitte neu verbinden.");
+    const body = JSON.stringify({ pairs });
+    const MAX = 3; // bei transienten Netzfehlern bis zu 3 Versuche pro Block
+    let lastErr;
+    for (let attempt = 1; attempt <= MAX; attempt++) {
+      try {
+        const resp = await fetch(`${API}/route-batch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHeaders() },
+          body,
+        });
+        if (resp.status === 401) {
+          state.authed = false;
+          setGate(true);
+          throw new Error("Zugangstoken abgelaufen — bitte neu verbinden.");
+        }
+        if (resp.status >= 500 || resp.status === 429) {
+          lastErr = new Error(`HTTP ${resp.status}`); // transient → wiederholen
+          if (attempt < MAX) { await retryWait(attempt); continue; }
+          throw lastErr;
+        }
+        if (!resp.ok) {
+          let detail = `HTTP ${resp.status}`;
+          try { detail = (await resp.json()).detail || detail; } catch {}
+          throw new Error(detail); // 4xx (z. B. 413) → nicht wiederholen
+        }
+        return (await resp.json()).results;
+      } catch (e) {
+        // Netzwerkfehler (fetch wirft TypeError) → wiederholen
+        if (e instanceof TypeError && attempt < MAX) { lastErr = e; await retryWait(attempt); continue; }
+        throw e;
+      }
     }
-    if (!resp.ok) {
-      let detail = `HTTP ${resp.status}`;
-      try { detail = (await resp.json()).detail || detail; } catch {}
-      throw new Error(detail);
-    }
-    return (await resp.json()).results;
+    throw lastErr || new Error("Netzwerkfehler");
+  }
+
+  function retryWait(attempt) {
+    $("progLabel").textContent = "Verbindung unterbrochen — neuer Versuch …";
+    return new Promise((r) => setTimeout(r, Math.min(600 * 2 ** (attempt - 1), 4000)));
   }
 
   function summarize(counts, secs, ncols) {

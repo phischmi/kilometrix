@@ -23,7 +23,7 @@ services:
       MANAGE_OSRM_ROUTED: "false"
       OSRM_ROUTED_URL: "http://osrm:5000"
       WORKERS: "8"
-      SNAP_LIMIT_M: "50"
+      SNAP_LIMIT_M: "100"
       AUTH_ENABLED: "true"
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET muss in .env gesetzt sein}"
     depends_on:

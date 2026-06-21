@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Verarbeitung
     workers: int = 8
-    snap_limit_m: float = 50.0
+    snap_limit_m: float = 100.0
     max_sync_batch: int = 20000  # Obergrenze pro POST /route-batch
 
     # Auth (für zentralen Betrieb hinter Reverse Proxy). Lokal aus = offen.
