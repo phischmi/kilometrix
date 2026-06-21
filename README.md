@@ -47,70 +47,57 @@ Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf Window
 ## Bedienung: Excel-Add-in (Office.js)
 
 Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechnen") liest die
-Koordinaten aus dem aktiven Blatt, ruft das lokale Backend und schreibt `distance_km,
-duration_min, status, snap_m` in die Nachbarspalten zurück.
+Koordinaten aus dem aktiven Blatt, ruft das Backend und schreibt `distance_km, duration_min,
+status, snap_m` in die Nachbarspalten zurück.
 Cross-Platform (Windows/Mac), unabhängig von der VBA-Makro-Policy, vollständig offline.
 
 Architektur: FastAPI liefert das Add-in **selbst über HTTPS** aus (same-origin) und stellt
-gleichzeitig `/route-batch` bereit und startet `osrm-routed` — ein einziger lokaler Prozess.
+`/route-batch` bereit; gerechnet wird über `osrm-routed`. Das läuft **lokal** als ein Prozess
+oder **zentral** als zwei Container hinter Traefik (siehe unten).
 
 **Sehr große Blätter:** Das Add-in arbeitet **streamend in Blöcken** (2000 Zeilen): lesen →
 berechnen → zurückschreiben pro Block. Der Speicher bleibt konstant, Teilergebnisse erscheinen
 sofort, der Fortschrittsbalken läuft mit — so sind auch Blätter mit hunderttausenden Zeilen
 ohne Office.js-Payload-Limits machbar.
 
-**Starten:**
+### Backend starten — lokal **oder** per Docker
 
-```bash
-# macOS/Linux
-./scripts/serve_addin.sh        # erzeugt localhost-Zertifikat, HTTPS auf :8443, startet osrm-routed
-
-# Windows (PowerShell)
-.\scripts\serve_addin.ps1
-```
-
-`GET /health` zeigt `engine_ready: true`, sobald `osrm-routed` den Graphen geladen hat.
-Port 5000 ist auf macOS vom AirPlay-Receiver belegt — daher Default `OSRM_ROUTED_PORT=5001`.
-Add-in liegt dann unter `https://127.0.0.1:8443/addin/taskpane.html`.
-
-**Zertifikat vertrauen (einmalig):** Office lädt das Pane nur über vertrauenswürdiges HTTPS
-(macOS: Keychain, Windows: Zertifikatspeicher / WebView2). Am einfachsten mit `mkcert` — richtet
-eine **per-User-CA ein, ohne Admin**:
-
-```bash
-brew install mkcert      # macOS
-scoop install mkcert     # Windows
-```
-
-Danach das Serve-Skript erneut starten. Ohne mkcert wird ein selbstsigniertes Zertifikat
-(`certs/localhost.pem`) erzeugt; die `.ps1` importiert es unter Windows automatisch in
-`Cert:\CurrentUser\Root` (kein Admin), auf macOS muss es einmalig manuell vertraut werden.
-
-**Sideloading (Manifest `addin/manifest.xml`):**
-
-- **macOS:** den `wef`-Ordner anlegen (existiert standardmäßig nicht) und das Manifest
-  hineinkopieren, dann **Excel komplett beenden (⌘Q) und neu öffnen**:
+- **Lokal** (einzelner Rechner; Add-in unter `https://127.0.0.1:8443`):
   ```bash
-  mkdir -p ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef
-  cp addin/manifest.xml ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/
+  ./scripts/serve_addin.sh        # macOS/Linux
+  .\scripts\serve_addin.ps1       # Windows (PowerShell)
   ```
-- **Windows (per-User, kein Admin):** Das Manifest auf eine **Netzwerkfreigabe (UNC-Pfad
-  `\\server\freigabe`)** legen — **nicht** in einen lokalen Ordner oder OneDrive, das wird als
-  Katalog nicht erkannt. Diesen UNC-Pfad unter *Datei → Optionen → Trust Center →
-  Vertrauenswürdige Add-in-Kataloge* eintragen (Häkchen „Im Menü anzeigen"), Excel neu starten →
-  *Einfügen → Add-Ins →* Reiter **„Freigegebener Ordner"** (nicht „Store") → Kilometrix.
+  Erzeugt ein localhost-Zertifikat, startet HTTPS auf :8443 und `osrm-routed`. Zertifikat
+  vertrauen: am einfachsten mit `mkcert` (`brew install mkcert` / `scoop install mkcert`,
+  per-User, kein Admin); ohne mkcert wird ein selbstsigniertes erzeugt (die `.ps1` importiert es
+  unter Windows automatisch in `Cert:\CurrentUser\Root`).
+- **Zentral per Docker** (NAS/Server hinter Traefik; Add-in unter der Domain): siehe
+  [Zentraler Betrieb (Docker)](#zentraler-betrieb-docker-poc). Dort übernimmt Traefik +
+  Let's Encrypt das echte TLS — kein mkcert pro Gerät.
 
-Das Add-in fügt eine eigene Gruppe **„Kilometrix"** mit dem Button **„Strecken berechnen"**
-auf dem **Start-Reiter** ein — dort ist der Einstieg (nicht unter „Einfügen → Meine Add-ins").
+`GET /health` zeigt `engine_ready: true`, sobald der Graph geladen ist.
 
-> **Gesperrte Firmenrechner:** Ist der Add-in-Store per Richtlinie deaktiviert (Meldung
-> „Der Add-in-Store wurde deaktiviert"), greift das Sideloading nicht. Dann über die **zentrale
-> Bereitstellung im M365-Admin-Center** ausrollen (IT): *Einstellungen → Integrierte Apps →
-> benutzerdefinierte App hochladen → Office-Add-in → `manifest.server.xml`* → Nutzern zuweisen.
-> Das umgeht den deaktivierten Store, weil das Add-in als „vom Administrator verwaltet" kommt.
+### Add-in in Excel installieren — vertrauenswürdiger Katalog (Netzwerkfreigabe)
 
-Ändert man Host/Port/Domain, müssen die URLs im jeweiligen Manifest (`addin/manifest.xml` lokal
-bzw. `addin/manifest.server.xml` zentral) angepasst werden.
+Das Manifest wird über einen *Vertrauenswürdigen Add-in-Katalog* auf einer **Netzwerkfreigabe
+(UNC-Pfad `\\server\freigabe`)** eingebunden — **nicht** über einen lokalen Ordner oder OneDrive
+(das wird als Katalog nicht erkannt):
+
+1. Passendes Manifest auf die Freigabe legen — `addin/manifest.xml` (lokal, `127.0.0.1:8443`)
+   bzw. `addin/manifest.server.xml` (zentral, Domain).
+2. Den UNC-Pfad unter *Datei → Optionen → Trust Center → Vertrauenswürdige Add-in-Kataloge*
+   eintragen (Häkchen „Im Menü anzeigen"), **Excel neu starten**.
+3. *Einfügen → Add-Ins →* Reiter **„Freigegebener Ordner"** (nicht „Store") → **Kilometrix**.
+
+Das Add-in fügt eine Gruppe **„Kilometrix"** mit dem Button **„Strecken berechnen"** auf dem
+**Start-Reiter** ein — dort ist der Einstieg.
+
+> **Gesperrte Firmenrechner:** Die Meldung „Der Add-in-Store wurde deaktiviert" ist normal — der
+> Reiter **„Freigegebener Ordner"** (Schritt 3) funktioniert trotzdem über den Katalog. Nur wenn
+> die Richtlinie **auch Kataloge** sperrt, hilft die zentrale Bereitstellung im **M365-Admin-Center**
+> (IT): *Einstellungen → Integrierte Apps → benutzerdefinierte App hochladen → `manifest.server.xml`*.
+
+Ändert man Host/Port/Domain, müssen die URLs im jeweiligen Manifest angepasst werden.
 
 ## Zentraler Betrieb (Docker, PoC)
 
@@ -147,7 +134,20 @@ einmalig `docker login ghcr.io`.)
 
 **Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, definierbare TTL,
 ohne DB) geschützt. Beim ersten Öffnen fragt das Add-in das Token ab (Gate), speichert es lokal
-und sendet es fortan automatisch. Widerruf = `AUTH_SECRET` rotieren.
+und sendet es fortan automatisch.
+
+```bash
+# Token erzeugen (TTL frei wählbar) und an den Nutzer geben
+docker compose -f docker-compose.prod.yml exec app python -m backend.tokens create --name philipp --days 90
+
+# ALLE Tokens widerrufen: AUTH_SECRET rotieren und App neu starten
+sed -i "s/^AUTH_SECRET=.*/AUTH_SECRET=$(openssl rand -hex 32)/" .env
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Da die Tokens zustandslos sind, lässt sich ein **einzelnes** Token nicht gezielt widerrufen —
+entweder kurze TTL vergeben (läuft von selbst ab) oder mit `AUTH_SECRET` **alle** rotieren.
+Nach dem Rotieren bekommen alle Nutzer `401` → im Add-in erscheint wieder das Token-Gate.
 
 **Add-in verteilen:** `addin/manifest.server.xml` (zeigt auf die Domain) per M365-Admin-Center
 zentral ausrollen — dann erscheint Kilometrix bei den zugewiesenen Nutzern ohne Sideloading.
