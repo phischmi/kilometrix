@@ -110,7 +110,7 @@ Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M
 Statt auf jedem Laptop lokal kann das Backend zentral laufen (z. B. NAS hinter Traefik mit
 Let's Encrypt). Vorteile: **echtes TLS** (kein mkcert pro Gerät), **zentrale Add-in-Verteilung**
 übers M365-Admin-Center, ein gepflegter Graph. `docker-compose.yml` startet zwei Container:
-`kilometrix-osrm` (offizielles Image, lädt den Graphen) + `kilometrix-app` (FastAPI, hinter Traefik).
+`osrm` (offizielles Image, lädt den Graphen) + `app` (FastAPI, hinter Traefik).
 
 **Variante A — Image aus GHCR ziehen (empfohlen, kein Build auf dem NAS).**
 GitHub Actions ([.github/workflows/docker.yml](.github/workflows/docker.yml)) baut bei jedem Push
@@ -122,7 +122,7 @@ echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* mus
 docker login ghcr.io -u phischmi                        # einmalig (PAT mit read:packages)
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml exec kilometrix-app python -m backend.tokens create --name philipp --days 90
+docker compose -f docker-compose.prod.yml exec app python -m backend.tokens create --name philipp --days 90
 ```
 
 **Variante B — lokal auf dem NAS bauen** (`docker-compose.yml`, braucht den Quellcode dort):
@@ -130,7 +130,7 @@ docker compose -f docker-compose.prod.yml exec kilometrix-app python -m backend.
 ```bash
 echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env
 docker compose up -d --build
-docker compose exec kilometrix-app python -m backend.tokens create --name philipp --days 90
+docker compose exec app python -m backend.tokens create --name philipp --days 90
 ```
 
 In beiden Compose-Dateien ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)

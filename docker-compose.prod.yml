@@ -9,27 +9,25 @@
 # Traefik-Netz/certresolver wie in docker-compose.yml an deine Instanz anpassen.
 
 services:
-  kilometrix-osrm:
+  osrm:
     image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v26.6.5-debian}
-    container_name: kilometrix-osrm
     command: ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "/data/germany.osrm"]
     volumes:
       - ./data:/data:ro
     restart: unless-stopped
 
-  kilometrix-app:
+  app:
     image: ${KILOMETRIX_IMAGE:-ghcr.io/phischmi/kilometrix:latest}
-    container_name: kilometrix-app
     pull_policy: always
     environment:
       MANAGE_OSRM_ROUTED: "false"
-      OSRM_ROUTED_URL: "http://kilometrix-osrm:5000"
+      OSRM_ROUTED_URL: "http://osrm:5000"
       WORKERS: "8"
       SNAP_LIMIT_M: "50"
       AUTH_ENABLED: "true"
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET muss in .env gesetzt sein}"
     depends_on:
-      - kilometrix-osrm
+      - osrm
     restart: unless-stopped
     networks:
       - default
