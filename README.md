@@ -94,16 +94,23 @@ Danach das Serve-Skript erneut starten. Ohne mkcert wird ein selbstsigniertes Ze
   mkdir -p ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef
   cp addin/manifest.xml ~/Library/Containers/com.microsoft.Excel/Data/Documents/wef/
   ```
-- **Windows (per-User, kein Admin):** Ordner mit `manifest.xml` als *Vertrauenswürdigen
-  Add-in-Katalog* unter *Datei → Optionen → Trust Center → Vertrauenswürdige Add-in-Kataloge*
-  registrieren (Häkchen „Im Menü anzeigen"), Excel neu starten →
-  *Einfügen → Add-Ins → Freigegebener Ordner → Kilometrix*.
+- **Windows (per-User, kein Admin):** Das Manifest auf eine **Netzwerkfreigabe (UNC-Pfad
+  `\\server\freigabe`)** legen — **nicht** in einen lokalen Ordner oder OneDrive, das wird als
+  Katalog nicht erkannt. Diesen UNC-Pfad unter *Datei → Optionen → Trust Center →
+  Vertrauenswürdige Add-in-Kataloge* eintragen (Häkchen „Im Menü anzeigen"), Excel neu starten →
+  *Einfügen → Add-Ins →* Reiter **„Freigegebener Ordner"** (nicht „Store") → Kilometrix.
 
 Das Add-in fügt eine eigene Gruppe **„Kilometrix"** mit dem Button **„Strecken berechnen"**
 auf dem **Start-Reiter** ein — dort ist der Einstieg (nicht unter „Einfügen → Meine Add-ins").
 
-Für einen breiten Rollout gäbe es zusätzlich die zentrale Verteilung übers M365-Admin-Center
-(braucht dann IT). Ändert man Host/Port, müssen die URLs in `addin/manifest.xml` angepasst werden.
+> **Gesperrte Firmenrechner:** Ist der Add-in-Store per Richtlinie deaktiviert (Meldung
+> „Der Add-in-Store wurde deaktiviert"), greift das Sideloading nicht. Dann über die **zentrale
+> Bereitstellung im M365-Admin-Center** ausrollen (IT): *Einstellungen → Integrierte Apps →
+> benutzerdefinierte App hochladen → Office-Add-in → `manifest.server.xml`* → Nutzern zuweisen.
+> Das umgeht den deaktivierten Store, weil das Add-in als „vom Administrator verwaltet" kommt.
+
+Ändert man Host/Port/Domain, müssen die URLs im jeweiligen Manifest (`addin/manifest.xml` lokal
+bzw. `addin/manifest.server.xml` zentral) angepasst werden.
 
 ## Zentraler Betrieb (Docker, PoC)
 
