@@ -332,7 +332,9 @@
             block[i] = { distance_km: null, duration_min: null, status: "error", snap_m: null };
           } else {
             sendIdx.push(i);
-            send.push({ origin_lat: oLa, origin_lon: oLo, dest_lat: dLa, dest_lon: dLo });
+            // Datenminimierung: NUR die vier Koordinaten verlassen das Blatt (keine IDs,
+            // keine weiteren Spalten), auf 6 Nachkommastellen (~0,1 m) gerundet.
+            send.push({ origin_lat: r6(oLa), origin_lon: r6(oLo), dest_lat: r6(dLa), dest_lon: r6(dLo) });
           }
         }
         if (send.length) {
@@ -452,4 +454,5 @@
   }
   const num = (v) => (v === "" || v == null ? NaN : Number(v));
   const numOrBlank = (v) => (v == null ? "" : v);
+  const r6 = (v) => Math.round(v * 1e6) / 1e6; // auf ~0,1 m runden
 })();
