@@ -14,7 +14,7 @@
 services:
   osrm:
     image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v26.6.5-debian}
-    command: ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "/data/germany.osrm"]
+    command: ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "--mmap", "/data/germany.osrm"]
     volumes:
       - ./data:/data:ro
     restart: unless-stopped

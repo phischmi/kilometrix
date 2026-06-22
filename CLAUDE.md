@@ -9,11 +9,12 @@ Ausgabe: dieselbe Tabelle plus `distance_km`, `duration_min`, `status`.
 **Keine externe Routing-API** (keine Limits, keine Kosten, keine Datenweitergabe).
 
 ## Harte Randbedingungen (nicht verhandelbar)
-- **Kein Docker.** Alles als native Prozesse in einem venv.
-- Muss auf **Windows-Firmenlaptop** laufen, Installation via **Scoop** + pip.
-  Keine Admin-Rechte annehmen.
-- Entwicklung auf **macOS** (Apple Silicon; ggf. auch x86_64 berücksichtigen).
-- Optionaler Betrieb auf Linux-NAS.
+- **Client/Entwicklung ohne Docker:** Auf dem **Windows-Firmenlaptop** (Installation via
+  **Scoop** + pip, keine Admin-Rechte annehmen) und auf **macOS** (Apple Silicon; ggf.
+  x86_64) laufen Backend + Tools als native Prozesse im venv.
+- **Zentraler Betrieb auf dem Linux-NAS läuft via Docker** (Compose hinter Traefik):
+  `osrm` + `app` als Container — siehe `docker-compose*.yml`. Docker gilt also nur für die
+  NAS, nicht für den Firmenlaptop.
 - **Max. 16 GB RAM** auf jeder Zielmaschine.
 - Offline-fähig nach einmaligem Daten-Setup.
 
@@ -48,14 +49,24 @@ braucht die CLI-Binaries und ist der speicherhungrige Teil:
   mit dem meisten freien RAM), dann auf Mac/Windows/NAS kopieren und nur abfragen.
 
 ### Routing-Strategie
-- **`osrm-routed`** als lokaler Subprozess (vom Backend verwaltet), Abfrage per HTTP (`httpx`)
-  auf `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`. Hinter dem schmalen
+- **`osrm-routed`**, Abfrage per HTTP (`httpx`) auf
+  `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`. Hinter dem schmalen
   Interface `RoutingEngine` (routing.py) → `HttpEngine`.
+- **Zwei Betriebsarten:** lokal startet das Backend `osrm-routed` selbst als Subprozess
+  (`MANAGE_OSRM_ROUTED=true`, siehe osrm_process.py); auf dem NAS läuft `osrm-routed` als
+  eigener Container und das Backend zeigt nur darauf (`MANAGE_OSRM_ROUTED=false`,
+  `OSRM_ROUTED_URL`).
+- **`--mmap` / `OSRM_ROUTED_MMAP` (Default an):** Graph von der Platte mappen statt komplett
+  ins RAM laden → deutlich weniger Leerlauf-Speicher (wichtig auf der RAM-knappen NAS), erste
+  Abfrage minimal langsamer. Lokal als Flag im Subprozess gesetzt, im Compose im osrm-Command.
 - Die in-process `osrm-bindings` wurden entfernt (archiviertes Wheel, Fingerprint-Mismatch zum
   aktuell gebauten Graphen — unbrauchbar).
 - Graph standardmäßig mit **LKW-Profil** `profiles/truck.lua` gebaut (von car.lua abgeleitet).
 
 ## Datenfluss (Office.js-Add-in)
+0. Add-in nur in Excel funktionsfähig: wird die Seite außerhalb von Excel (z. B. direkt
+   im Browser) geöffnet, zeigt das Add-in einen Hinweis statt des funktionslosen UIs
+   (Erkennung über `Office.onReady`-Host + Timeout-Fallback).
 1. Task Pane öffnen; Bereich (ganzes Blatt / Markierung) + Spalten-Mapping wählen
    (`origin_lat`, `origin_lon`, `dest_lat`, `dest_lon`).
 2. „Strecken berechnen" → das Add-in liest die Koordinaten **blockweise** (2000 Zeilen).
@@ -80,6 +91,8 @@ braucht die CLI-Binaries und ist der speicherhungrige Teil:
 ```
 .
 ├── CLAUDE.md  ·  README.md (Quelle der Wahrheit)  ·  pyproject.toml  ·  .env.example
+├── docker-compose.yml       # NAS-Betrieb (Traefik): osrm + app, App-Image lokal gebaut
+├── docker-compose.prod.yml  # NAS-Betrieb: App-Image aus GHCR (CI-Build) ziehen
 ├── data/                    # germany.osrm.* (gitignored, groß)
 ├── backend/
 │   ├── main.py              # FastAPI: Add-in-Auslieferung, /health, /route-batch
@@ -108,6 +121,10 @@ pip install -e .
 
 # Tests
 pytest
+
+# NAS (Docker, zentraler Betrieb hinter Traefik)
+docker compose -f docker-compose.prod.yml pull   # App-Image aus GHCR
+docker compose -f docker-compose.prod.yml up -d   # osrm + app als Container
 ```
 
 ## Konventionen
@@ -121,3 +138,7 @@ pytest
 2. ✅ Excel-Schema: getrennte Spalten `origin_lat/lon, dest_lat/lon`, eine Route pro Zeile.
 3. ✅ Graph-Build auf M4 (16 GB): Peak ~7,7 GB beim Customize — passt.
 4. Bedienung erfolgt über das Office.js-Add-in (kein Streamlit/Datei-Flow mehr).
+5. ✅ Produktiv-Betrieb läuft via Docker-Compose auf der NAS (osrm + app hinter Traefik).
+6. ✅ `osrm-routed` mit `--mmap` (`OSRM_ROUTED_MMAP`, Default an) → weniger Leerlauf-RAM,
+   sowohl im lokalen Subprozess als auch im Compose-Command gesetzt.
+7. ✅ Add-in zeigt außerhalb von Excel einen Hinweis statt funktionslosem UI.
