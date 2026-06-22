@@ -59,7 +59,9 @@ class OsrmRoutedProcess:
             str(self._port),
         ]
         if self._mmap:
-            args.append("--mmap")  # Graph von der Platte mappen statt ins RAM laden
+            # explizit "--mmap true": ohne Wert würde osrm-routed den folgenden
+            # Graph-Pfad als Flag-Wert interpretieren.
+            args += ["--mmap", "true"]
         args.append(str(self._graph_path))  # Basis-Pfad muss das letzte Argument bleiben
         self._proc = subprocess.Popen(
             args,
