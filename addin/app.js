@@ -20,11 +20,17 @@
     durFormat: "min", // "min" | "hhmm"
   };
 
+  let officeInitialized = false;
+
   Office.onReady((info) => {
+    officeInitialized = true;
+    // Außerhalb von Excel (z. B. direkt im Browser) hat das Add-in keine Funktion —
+    // statt des UIs nur den Hinweis zeigen.
     if (info.host !== Office.HostType.Excel) {
-      showAlert("Bitte in Microsoft Excel öffnen.");
+      showNotExcel();
       return;
     }
+    showApp();
     $("backendUrl").textContent = location.host;
     applyTheme();
     watchTheme();
@@ -40,6 +46,14 @@
       await ctx.sync();
     }).catch(() => {});
   });
+
+  // Fallback: Wird die Seite außerhalb von Office geöffnet, initialisiert office.js u. U.
+  // gar nicht (z. B. im Browser ohne Internet) → onReady feuert nie. Nach kurzer Wartezeit
+  // den Hinweis zeigen, statt das (funktionslose) UI stehen zu lassen.
+  setTimeout(() => { if (!officeInitialized) showNotExcel(); }, 3000);
+
+  function showApp() { $("notExcel").hidden = true; $("appRoot").hidden = false; }
+  function showNotExcel() { $("appRoot").hidden = true; $("notExcel").hidden = false; }
 
   // Reihenfolge: Status prüfen → ggf. Token-Gate → Tabellenkontext laden
   async function boot() {

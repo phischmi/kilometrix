@@ -21,6 +21,7 @@ class OsrmRoutedProcess:
         host: str,
         port: int,
         verbosity: str = "WARNING",
+        mmap: bool = False,
     ) -> None:
         self._binary = binary
         self._graph_path = graph_path
@@ -28,6 +29,7 @@ class OsrmRoutedProcess:
         self._host = host
         self._port = port
         self._verbosity = verbosity
+        self._mmap = mmap
         self._proc: subprocess.Popen | None = None
 
     @property
@@ -45,19 +47,22 @@ class OsrmRoutedProcess:
                 f"scripts/build_graph.sh bauen."
             )
 
+        args = [
+            self._binary,
+            "--algorithm",
+            self._algorithm,
+            "--verbosity",
+            self._verbosity,  # WARNING: keine Koordinaten-Logs
+            "--ip",
+            self._host,
+            "--port",
+            str(self._port),
+        ]
+        if self._mmap:
+            args.append("--mmap")  # Graph von der Platte mappen statt ins RAM laden
+        args.append(str(self._graph_path))  # Basis-Pfad muss das letzte Argument bleiben
         self._proc = subprocess.Popen(
-            [
-                self._binary,
-                "--algorithm",
-                self._algorithm,
-                "--verbosity",
-                self._verbosity,  # WARNING: keine Koordinaten-Logs
-                "--ip",
-                self._host,
-                "--port",
-                str(self._port),
-                str(self._graph_path),
-            ],
+            args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )

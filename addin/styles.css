@@ -84,6 +84,18 @@ html, body {
 }
 
 .app { display: flex; flex-direction: column; min-height: 100%; }
+/* eigene display-Werte schlagen das UA-[hidden] — daher explizit ausblenden */
+.app[hidden] { display: none; }
+
+/* ---------- „Nur in Excel"-Hinweis ---------- */
+.notexcel {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; min-height: 100%; padding: 44px 28px; gap: 14px;
+}
+.notexcel[hidden] { display: none; }
+.notexcel__logo { width: 56px; height: 56px; border-radius: 14px; opacity: .9; }
+.notexcel__title { font-weight: 700; font-size: 17px; letter-spacing: -.015em; }
+.notexcel__text { font-size: 13px; color: var(--muted); line-height: 1.5; max-width: 280px; }
 
 /* ---------- Header ---------- */
 .hdr {
