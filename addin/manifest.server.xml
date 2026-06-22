@@ -7,14 +7,14 @@
   xsi:type="TaskPaneApp">
 
   <Id>d9ebc2c2-d258-46b1-bc6e-fc24f5899b34</Id>
-  <Version>1.0.1.0</Version>
+  <Version>1.0.3.0</Version>
   <ProviderName>Kilometrix</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="Kilometrix" />
   <Description DefaultValue="Berechnung von Straßen-Kilometern und Fahrzeiten direkt im Blatt (zentraler OSRM-Server)." />
   <IconUrl DefaultValue="https://kilometrix.philipp-schmidt.de/addin/assets/icon-32.png" />
   <HighResolutionIconUrl DefaultValue="https://kilometrix.philipp-schmidt.de/addin/assets/icon-80.png" />
-  <SupportUrl DefaultValue="https://kilometrix.philipp-schmidt.de/addin/taskpane.html" />
+  <SupportUrl DefaultValue="https://github.com/phischmi/kilometrix" />
 
   <Hosts>
     <Host Name="Workbook" />

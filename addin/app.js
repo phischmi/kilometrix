@@ -31,6 +31,7 @@
       return;
     }
     showApp();
+    showVersion();
     $("backendUrl").textContent = location.host;
     applyTheme();
     watchTheme();
@@ -54,6 +55,16 @@
 
   function showApp() { $("notExcel").hidden = true; $("appRoot").hidden = false; }
   function showNotExcel() { $("appRoot").hidden = true; $("notExcel").hidden = false; }
+
+  // Add-in-Version aus dem Manifest (Single Source) lesen und im Footer zeigen.
+  async function showVersion() {
+    try {
+      const xml = await (await fetch("manifest.xml")).text();
+      const doc = new DOMParser().parseFromString(xml, "application/xml");
+      const v = doc.getElementsByTagNameNS("*", "Version")[0]?.textContent?.trim();
+      if (v) $("appVersion").textContent = ` · v${v}`;
+    } catch {}
+  }
 
   // Reihenfolge: Status prüfen → ggf. Token-Gate → Tabellenkontext laden
   async function boot() {
