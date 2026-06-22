@@ -9,7 +9,18 @@
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 </head>
 <body>
-  <div class="app">
+  <!-- Hinweis, wenn die Seite außerhalb von Excel (z. B. direkt im Browser) geöffnet wird.
+       app.js blendet stattdessen das Add-in ein, sobald Office Excel als Host bestätigt. -->
+  <div class="notexcel" id="notExcel" hidden>
+    <img class="notexcel__logo" src="assets/icon-64.png" alt="" />
+    <div class="notexcel__title">Nur in Microsoft Excel nutzbar</div>
+    <p class="notexcel__text">
+      Kilometrix ist ein Excel-Add-in und hat außerhalb von Excel keine Funktion.
+      Bitte über „Start → Add-ins" direkt in Microsoft Excel öffnen.
+    </p>
+  </div>
+
+  <div class="app" id="appRoot" hidden>
     <header class="hdr">
       <img class="hdr__logo" src="assets/icon-64.png" alt="" />
       <div>

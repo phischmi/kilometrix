@@ -7,7 +7,7 @@
   xsi:type="TaskPaneApp">
 
   <Id>1f353922-657b-46f1-aa63-c3f408f6d2b9</Id>
-  <Version>1.0.1.0</Version>
+  <Version>1.0.2.0</Version>
   <ProviderName>Kilometrix</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="Kilometrix" />

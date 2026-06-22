@@ -1,8 +1,9 @@
 # Kilometrix — OSRM Distanz-Tool
 
 Offline-Berechnung von Straßen-Kilometern und Fahrzeiten für Origin→Destination-Paare
-in Deutschland (LKW-optimiert). Keine externe Routing-API. Routing läuft lokal über
-`osrm-routed`, das das Backend selbst als Subprozess startet und stoppt.
+in Deutschland (LKW-optimiert). Keine externe Routing-API. Routing läuft über `osrm-routed`
+— **lokal** als vom Backend verwalteter Subprozess, **zentral (NAS)** als eigener
+Docker-Container (siehe [Zentraler Betrieb](#zentraler-betrieb-docker-poc)).
 
 ## Setup
 
@@ -39,6 +40,12 @@ Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf Window
 **Wichtig:** Der Graph muss mit derselben osrm-backend-Version gebaut werden wie das
 `osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` / `OSRM_ALGORITHM` (MLD) in `.env` setzen.
 
+**RAM / `--mmap`:** `osrm-routed` mappt den Graphen standardmäßig per Memory-Mapping von der
+Platte, statt ihn komplett ins RAM zu laden (`OSRM_ROUTED_MMAP=true`; im Compose als `--mmap`
+im osrm-Command gesetzt). Das senkt den Leerlauf-Speicher deutlich — wichtig auf der
+RAM-knappen NAS —, die erste Abfrage ist dafür minimal langsamer (auf SSD vernachlässigbar).
+Auf `false` setzen, wenn der Graph fest ins RAM geladen werden soll.
+
 > **Hinweis:** `truck.lua` ist ein **Startprofil** — Syntax geprüft, aber vor dem
 > Produktiveinsatz an echten Routen verifizieren und Maße/Gewicht ggf. an die Flotte
 > anpassen. OSRM ist „truck-aware" (HGV-Sperren, Maß-/Gewichtsbeschränkungen aus OSM),
@@ -50,6 +57,8 @@ Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechne
 Koordinaten aus dem aktiven Blatt, ruft das Backend und schreibt `distance_km, duration_min,
 status, snap_m` in die Nachbarspalten zurück.
 Cross-Platform (Windows/Mac), unabhängig von der VBA-Makro-Policy, vollständig offline.
+Die Add-in-Seite funktioniert nur in Excel: außerhalb (z. B. direkt im Browser aufgerufen)
+zeigt sie einen Hinweis statt der funktionslosen Oberfläche.
 
 Architektur: FastAPI liefert das Add-in **selbst über HTTPS** aus (same-origin) und stellt
 `/route-batch` bereit; gerechnet wird über `osrm-routed`. Das läuft **lokal** als ein Prozess

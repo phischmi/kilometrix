@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     osrm_routed_url: str | None = None  # expliziter Override; sonst host:port
     # WARNING unterdrückt die INFO-Request-Logs (die Koordinaten enthalten).
     osrm_routed_verbosity: str = "WARNING"
+    # mmap: Graphdaten von der Platte mappen statt komplett ins RAM laden. Senkt den
+    # Leerlauf-Speicher von osrm-routed deutlich (gut für RAM-knappe NAS); die erste
+    # „kalte" Abfrage ist minimal langsamer, auf SSD vernachlässigbar.
+    osrm_routed_mmap: bool = True
 
     @property
     def routed_base_url(self) -> str:
