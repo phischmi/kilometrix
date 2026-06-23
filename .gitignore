@@ -25,3 +25,8 @@ certs/
 
 # OS
 .DS_Store
+
+# Go
+/kilometrix
+/dist/
+*.test
