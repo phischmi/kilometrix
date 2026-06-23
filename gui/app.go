@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -54,6 +55,9 @@ func resolveBinary(workDir string) string {
 		return v
 	}
 	name := "kilometrix"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
 	candidates := []string{}
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), name))
