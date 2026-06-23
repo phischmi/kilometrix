@@ -5,6 +5,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -242,19 +244,19 @@ func (a *App) CreateToken(name string, days float64) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("Name erforderlich")
 	}
-	out, err := a.run("token", "create", "--name", name, "--days", fmt.Sprintf("%g", days))
+	cmd := a.command("token", "create", "--name", name, "--days", fmt.Sprintf("%g", days))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr // Fehlermeldung des Binaries (z. B. fehlendes AUTH_SECRET) erfassen
+	out, err := cmd.Output()
 	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return "", fmt.Errorf("%s", msg)
+		}
 		return "", err
 	}
-	// Erste Zeile = Token (der Hinweis geht auf stderr).
-	tok := string(out)
-	for i, c := range tok {
-		if c == '\n' {
-			tok = tok[:i]
-			break
-		}
-	}
-	return tok, nil
+	// Erste Zeile = Token (der Erfolgs-Hinweis geht auf stderr).
+	tok, _, _ := strings.Cut(string(out), "\n")
+	return strings.TrimSpace(tok), nil
 }
 
 // command baut ein exec.Cmd im Arbeitsverzeichnis.

@@ -27,6 +27,26 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Dark-Mode folgt der System-Einstellung (wie das Task Pane). Tailwind-v4-Utilities
+   referenzieren die Theme-Variablen → Überschreiben der --color-* genügt. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #161d27;       /* Karten/Inputs */
+    --color-surface: #0f141b;  /* Seitenhintergrund */
+    --color-ink: #e8eaef;
+    --color-muted: #9aa1ac;
+    --color-faint: #686f7a;
+    --color-line: #1e2530;
+    --color-line2: #2a323e;
+    --color-petrol: #6b93f5;
+    --color-petrol-dk: #557fe8;
+    --color-petrol-soft: #18233b;
+    --color-amber: #f4768c;
+    --color-green: #36bb80;
+    --color-red: #e26a54;
+  }
+}
+
 html, body { height: 100%; }
 body {
   margin: 0;
