@@ -155,7 +155,7 @@ echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* + d
 docker login ghcr.io -u phischmi                        # einmalig (PAT mit read:packages)
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml exec app python -m backend.tokens create --name philipp --days 90
+docker compose -f docker-compose.prod.yml exec app kilometrix token create --name philipp --days 90
 ```
 
 **Variante B — lokal auf dem NAS bauen** (`docker-compose.yml`, braucht den Quellcode dort):
@@ -163,7 +163,7 @@ docker compose -f docker-compose.prod.yml exec app python -m backend.tokens crea
 ```bash
 echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env
 docker compose up -d --build
-docker compose exec app python -m backend.tokens create --name philipp --days 90
+docker compose exec app kilometrix token create --name philipp --days 90
 ```
 
 In beiden Compose-Dateien ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)
@@ -177,7 +177,7 @@ und sendet es fortan automatisch.
 
 ```bash
 # Token erzeugen (TTL frei wählbar) und an den Nutzer geben
-docker compose -f docker-compose.prod.yml exec app python -m backend.tokens create --name philipp --days 90
+docker compose -f docker-compose.prod.yml exec app kilometrix token create --name philipp --days 90
 
 # ALLE Tokens widerrufen: AUTH_SECRET rotieren und App neu starten
 sed -i "s/^AUTH_SECRET=.*/AUTH_SECRET=$(openssl rand -hex 32)/" .env
