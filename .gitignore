@@ -14,6 +14,8 @@ venv/
 # OSRM-Graph (groß) + Laufzeit-Artefakte
 data/*.osrm*
 data/*.pbf
+# Geocoding-Tabelle (via scripts/build_geocode.sh erzeugt)
+data/plz_centroids.csv
 data/checkpoints/
 data/uploads/
 data/results/

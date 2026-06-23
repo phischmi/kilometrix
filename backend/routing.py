@@ -24,6 +24,7 @@ OK = "ok"
 SNAPPED_FAR = "snapped_far"
 NO_ROUTE = "no_route"
 ERROR = "error"
+PLZ_NOT_FOUND = "plz_not_found"  # Geocoding: keine Koordinate für die LKZ/PLZ-Kombination
 
 
 @dataclass(frozen=True)

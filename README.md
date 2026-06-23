@@ -51,6 +51,35 @@ Auf `false` setzen, wenn der Graph fest ins RAM geladen werden soll.
 > anpassen. OSRM ist „truck-aware" (HGV-Sperren, Maß-/Gewichtsbeschränkungen aus OSM),
 > aber kein Voll-Truck-Router — die Genauigkeit hängt an den OSM-Daten.
 
+## Koordinaten aus LKZ/PLZ herleiten (optional)
+
+Liegen statt Koordinaten nur **LKZ + PLZ** vor (z. B. `DE` / `80331`), kann Kilometrix die
+Koordinaten **offline aus PLZ-Zentroiden** herleiten. Dazu wird einmalig eine kompakte Tabelle
+gebaut — analog zum Graph, separat vom Tool:
+
+```bash
+./scripts/build_geocode.sh        # macOS/Linux
+.\scripts\build_geocode.ps1       # Windows (PowerShell)
+```
+
+Das Skript lädt den GeoNames-Postal-Datensatz (Standard: Deutschland, `GEONAMES_COUNTRY=DE`),
+mittelt je PLZ den **Zentroid** der Ortsteile und schreibt `data/plz_centroids.csv`
+(`country,plz,lat,lon`). Die Datei ist winzig (~10.000 DE-PLZ) und **portabel** — einmal bauen,
+dann nach Windows/NAS kopieren. Quelle: [GeoNames](https://download.geonames.org/export/zip/)
+(CC BY 4.0). Pfad via `GEOCODE_PATH` in `.env`. `GET /health` zeigt `geocode_ready: true`,
+sobald die Tabelle geladen ist; fehlt sie, bleibt nur der Modus „Nur Routing".
+
+Im Add-in schaltet ein Umschalter zwischen **„Geocoding + Routing"** (Spalten LKZ + PLZ für
+Start und Ziel, **Standard**) und **„Nur Routing"** (Koordinatenspalten wie bisher). Im Geocoding-Modus löst
+das Backend die Koordinaten innerhalb desselben `/route-batch`-Aufrufs auf (kein zweiter Aufruf),
+schreibt die hergeleiteten `origin_lat/lon`, `dest_lat/lon` sichtbar ins Blatt und routet direkt.
+Unbekannte PLZ erscheinen als Status `plz_not_found`.
+
+> **Hinweis:** PLZ-Zentroide sind grob (Ortsmitte) — die nächste routbare Straße liegt oft
+> einige Hundert Meter entfernt, daher werden viele Geocoding-Strecken als `snapped_far`
+> markiert. Das ist hier **erwartet** und kein Fehler. LKZ wird als ISO-3166 alpha-2 erwartet
+> (`DE`, `AT`, …); der Standard-Datensatz deckt Deutschland ab (passend zum Germany-Graph).
+
 ## Bedienung: Excel-Add-in (Office.js)
 
 Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechnen") liest die
@@ -175,17 +204,28 @@ POST /route-batch
 {
   "pairs": [
     {"id": "A1", "origin_lat": 52.52, "origin_lon": 13.405,
-     "dest_lat": 48.1372, "dest_lon": 11.5755}
+     "dest_lat": 48.1372, "dest_lon": 11.5755},
+    {"id": "A2", "origin_lkz": "DE", "origin_plz": "10115",
+     "dest_lkz": "DE", "dest_plz": "80331"}
   ]
 }
 ->
 {
   "results": [
     {"id": "A1", "distance_km": 585.7, "duration_min": 356.47,
-     "status": "snapped_far", "snap_m": 69.2, "message": null}
+     "status": "snapped_far", "snap_m": 69.2, "message": null,
+     "origin_lat": 52.52, "origin_lon": 13.405, "dest_lat": 48.1372, "dest_lon": 11.5755},
+    {"id": "A2", "distance_km": 585.9, "duration_min": 357.1,
+     "status": "snapped_far", "snap_m": 412.0, "message": null,
+     "origin_lat": 52.5323, "origin_lon": 13.3846, "dest_lat": 48.1345, "dest_lon": 11.571}
   ]
 }
 ```
+
+Jeder Endpunkt wird **entweder** über `*_lat/*_lon` **oder** über `*_lkz/*_plz` angegeben;
+LKZ/PLZ löst das Backend zum Zentroid auf (benötigt `data/plz_centroids.csv`, sonst `503`).
+Die Response gibt die verwendeten/hergeleiteten Koordinaten zurück; nicht auflösbare PLZ
+liefern Status `plz_not_found`.
 
 Synchron und parallel (8 Worker). Reihenfolge bleibt erhalten, `id` wird durchgereicht.
 Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) pro Request — das Add-in chunkt automatisch

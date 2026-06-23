@@ -13,11 +13,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from backend.config import get_settings
+from backend.geocode import Coord, Geocoder, load_geocoder
 from backend.osrm_process import OsrmRoutedProcess
-from backend.routing import get_engine, route_pairs
+from backend.routing import PLZ_NOT_FOUND, RouteResult, get_engine, route_pairs
 from backend.tokens import TokenError, verify
 
 
@@ -59,6 +60,11 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         app.state.engine = None
         app.state.engine_error = str(exc)
+    # Geocoder unabhängig laden (fehlende CSV deaktiviert nur das Geocoding, nicht das Routing).
+    try:
+        app.state.geocoder = load_geocoder(settings)
+    except Exception:
+        app.state.geocoder = None
     try:
         yield
     finally:
@@ -88,15 +94,52 @@ def root():
 
 
 class RoutePair(BaseModel):
+    """Ein Origin→Destination-Paar. Jeder Endpunkt wird ENTWEDER über Koordinaten
+    (lat/lon) ODER über LKZ+PLZ angegeben; LKZ/PLZ werden serverseitig zum Zentroid
+    aufgelöst."""
+
     id: str | int | None = None
-    origin_lat: float
-    origin_lon: float
-    dest_lat: float
-    dest_lon: float
+    origin_lat: float | None = None
+    origin_lon: float | None = None
+    dest_lat: float | None = None
+    dest_lon: float | None = None
+    origin_lkz: str | None = None
+    origin_plz: str | None = None
+    dest_lkz: str | None = None
+    dest_plz: str | None = None
+
+    @model_validator(mode="after")
+    def _check_endpoints(self) -> "RoutePair":
+        def ok(lat: float | None, lon: float | None, lkz: str | None, plz: str | None) -> bool:
+            return (lat is not None and lon is not None) or (bool(lkz) and bool(plz))
+
+        if not ok(self.origin_lat, self.origin_lon, self.origin_lkz, self.origin_plz):
+            raise ValueError("origin: Koordinaten (lat/lon) ODER LKZ+PLZ angeben")
+        if not ok(self.dest_lat, self.dest_lon, self.dest_lkz, self.dest_plz):
+            raise ValueError("dest: Koordinaten (lat/lon) ODER LKZ+PLZ angeben")
+        return self
 
 
 class RouteBatchRequest(BaseModel):
     pairs: list[RoutePair]
+
+
+def _resolve_endpoint(
+    lat: float | None,
+    lon: float | None,
+    lkz: str | None,
+    plz: str | None,
+    geocoder: Geocoder | None,
+    cache: dict[tuple[str, str], Coord | None],
+) -> Coord | None:
+    """Endpunkt zu (lat, lon) auflösen. Koordinaten haben Vorrang; sonst LKZ/PLZ über den
+    Geocoder. None = keine Koordinate (PLZ nicht gefunden). Dedupe über cache."""
+    if lat is not None and lon is not None:
+        return (lat, lon)
+    key = (str(lkz), str(plz))
+    if key not in cache:
+        cache[key] = geocoder.resolve(lkz, plz) if geocoder else None
+    return cache[key]
 
 
 @app.get("/health")
@@ -105,6 +148,7 @@ def health() -> dict:
         "status": "ok",
         "engine_ready": app.state.engine is not None,
         "engine_error": app.state.engine_error,
+        "geocode_ready": app.state.geocoder is not None,
         "auth_required": get_settings().auth_enabled,
     }
 
@@ -131,10 +175,37 @@ def route_batch(req: RouteBatchRequest, claims: dict | None = Depends(require_to
             f"Bitte in kleineren Blöcken senden (das Add-in tut das automatisch).",
         )
 
-    coords = [((p.origin_lat, p.origin_lon), (p.dest_lat, p.dest_lon)) for p in req.pairs]
-    results = route_pairs(app.state.engine, coords, settings.workers)
-    return {
-        "results": [
+    geocoder = app.state.geocoder
+    needs_geo = any(
+        p.origin_lat is None or p.origin_lon is None or p.dest_lat is None or p.dest_lon is None
+        for p in req.pairs
+    )
+    if needs_geo and geocoder is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Geocoding nicht verfügbar: data/plz_centroids.csv fehlt. "
+            "Bitte scripts/build_geocode.sh ausführen.",
+        )
+
+    # Endpunkte auflösen (Koordinaten direkt ODER LKZ/PLZ → Zentroid). Dedupe je Request.
+    cache: dict[tuple[str, str], Coord | None] = {}
+    resolved: list[tuple[Coord | None, Coord | None]] = [
+        (
+            _resolve_endpoint(p.origin_lat, p.origin_lon, p.origin_lkz, p.origin_plz, geocoder, cache),
+            _resolve_endpoint(p.dest_lat, p.dest_lon, p.dest_lkz, p.dest_plz, geocoder, cache),
+        )
+        for p in req.pairs
+    ]
+
+    # Nur vollständig aufgelöste Paare routen; nicht auflösbare bekommen plz_not_found
+    # (spart osrm-Aufrufe). route_results-Reihenfolge folgt to_route.
+    to_route = [(o, d) for o, d in resolved if o is not None and d is not None]
+    route_results = iter(route_pairs(app.state.engine, to_route, settings.workers))
+
+    out = []
+    for p, (o, d) in zip(req.pairs, resolved):
+        r = next(route_results) if o is not None and d is not None else RouteResult(None, None, PLZ_NOT_FOUND)
+        out.append(
             {
                 "id": p.id,
                 "distance_km": r.distance_km,
@@ -142,7 +213,11 @@ def route_batch(req: RouteBatchRequest, claims: dict | None = Depends(require_to
                 "status": r.status,
                 "snap_m": r.snap_m,
                 "message": r.message,
+                # verwendete/hergeleitete Koordinaten zurückgeben → Add-in schreibt sie sichtbar
+                "origin_lat": o[0] if o else None,
+                "origin_lon": o[1] if o else None,
+                "dest_lat": d[0] if d else None,
+                "dest_lon": d[1] if d else None,
             }
-            for p, r in zip(req.pairs, results)
-        ]
-    }
+        )
+    return {"results": out}

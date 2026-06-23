@@ -88,10 +88,25 @@
 
         <div class="divider"></div>
 
+        <!-- Modus -->
+        <section class="block">
+          <div class="label">Modus</div>
+          <div class="seg" role="group" aria-label="Modus">
+            <button id="modeRoute" aria-pressed="false">Nur Routing</button>
+            <button id="modeGeo" aria-pressed="true">Geocoding + Routing</button>
+          </div>
+          <p class="mode-hint" id="modeHint">
+            Koordinaten werden aus LKZ/PLZ (Zentroid) hergeleitet und ins Blatt geschrieben.
+          </p>
+        </section>
+
+        <div class="divider"></div>
+
         <!-- Spalten -->
         <section class="block">
           <div class="label">Spalten zuordnen</div>
-          <div class="grid">
+          <!-- Modus „Nur Routing": Koordinaten -->
+          <div class="grid" id="grid_coords" hidden>
             <div class="field">
               <span class="field__label"><span class="pin pin--o"></span>Start · Breite</span>
               <select id="origin_lat"></select>
@@ -107,6 +122,25 @@
             <div class="field">
               <span class="field__label"><span class="pin pin--d"></span>Ziel · Länge</span>
               <select id="dest_lon"></select>
+            </div>
+          </div>
+          <!-- Modus „Geocoding + Routing": LKZ + PLZ -->
+          <div class="grid" id="grid_plz">
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · LKZ</span>
+              <select id="origin_lkz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · PLZ</span>
+              <select id="origin_plz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · LKZ</span>
+              <select id="dest_lkz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · PLZ</span>
+              <select id="dest_plz"></select>
             </div>
           </div>
         </section>

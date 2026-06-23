@@ -96,13 +96,15 @@ braucht die CLI-Binaries und ist der speicherhungrige Teil:
 ├── data/                    # germany.osrm.* (gitignored, groß)
 ├── backend/
 │   ├── main.py              # FastAPI: Add-in-Auslieferung, /health, /route-batch
-│   ├── routing.py           # Engine-Interface: HttpEngine (osrm-routed) | OsrmBindingsEngine
+│   ├── routing.py           # Engine-Interface: HttpEngine (osrm-routed)
+│   ├── geocode.py           # LKZ/PLZ -> Zentroid (offline, data/plz_centroids.csv)
 │   ├── osrm_process.py      # osrm-routed als Subprozess starten/stoppen
 │   └── config.py            # Settings via .env
 ├── addin/                   # Office.js-Add-in (manifest.xml, taskpane.html, styles.css, app.js)
 └── scripts/
-    ├── build_graph.(sh|ps1) # einmaliges Preprocessing
-    └── serve_addin.sh       # HTTPS-Backend (Cert + :8443) für das Add-in
+    ├── build_graph.(sh|ps1)   # einmaliges OSRM-Preprocessing
+    ├── build_geocode.(sh|ps1) # Geocoding-Setup (GeoNames -> plz_centroids.csv)
+    └── serve_addin.sh         # HTTPS-Backend (Cert + :8443) für das Add-in
 ```
 
 ## Commands
@@ -142,3 +144,7 @@ docker compose -f docker-compose.prod.yml up -d   # osrm + app als Container
 6. ✅ `osrm-routed` mit `--mmap` (`OSRM_ROUTED_MMAP`, Default an) → weniger Leerlauf-RAM,
    sowohl im lokalen Subprozess als auch im Compose-Command gesetzt.
 7. ✅ Add-in zeigt außerhalb von Excel einen Hinweis statt funktionslosem UI.
+8. ✅ Geocoding aus LKZ/PLZ (offline, Zentroide aus GeoNames via build_geocode): LKZ als
+   ISO-3166 alpha-2, DE-only. Add-in-Umschalter „Nur Routing" / „Geocoding + Routing"; die
+   Auflösung passiert in `/route-batch` (ein Round-Trip, Dedupe), hergeleitete Koordinaten
+   werden sichtbar ins Blatt geschrieben, unbekannte PLZ → Status `plz_not_found`.

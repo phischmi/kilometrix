@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     def routed_base_url(self) -> str:
         return self.osrm_routed_url or f"http://{self.osrm_routed_host}:{self.osrm_routed_port}"
 
+    # Geocoding (LKZ/PLZ → Zentroid). CSV separat via scripts/build_geocode.sh erzeugt.
+    geocode_path: Path = Path("data/plz_centroids.csv")
+
     # Verarbeitung
     workers: int = 8
     snap_limit_m: float = 100.0

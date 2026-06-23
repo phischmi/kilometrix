@@ -155,6 +155,10 @@ html, body {
 
 /* Mapping */
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
+/* eigener display-Wert schlägt das UA-[hidden] — daher explizit ausblenden */
+.grid[hidden] { display: none; }
+.mode-hint { margin: 8px 0 0; font-size: 11px; color: var(--muted); line-height: 1.4; }
+.mode-hint[hidden] { display: none; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field__label { font-size: 11px; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
 .pin { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }

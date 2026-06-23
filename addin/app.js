@@ -6,7 +6,11 @@
   "use strict";
 
   const API = ""; // same-origin: FastAPI liefert dieses Add-in selbst aus
-  const TARGETS = ["origin_lat", "origin_lon", "dest_lat", "dest_lon"];
+  // Zwei Eingabemodi: "route" = fertige Koordinaten, "geo" = LKZ/PLZ → Zentroid (serverseitig).
+  const COORD_TARGETS = ["origin_lat", "origin_lon", "dest_lat", "dest_lon"];
+  const GEO_TARGETS = ["origin_lkz", "origin_plz", "dest_lkz", "dest_plz"];
+  const ALL_TARGETS = [...COORD_TARGETS, ...GEO_TARGETS];
+  const targets = () => (settings.mode === "geo" ? GEO_TARGETS : COORD_TARGETS);
   // Blockgröße fürs Streaming: pro Block wird gelesen → berechnet → zurückgeschrieben.
   // Hält den Speicher konstant und macht das Add-in auch für sehr große Blätter tauglich.
   const BLOCK = 2000;
@@ -18,6 +22,7 @@
   const settings = {
     cols: { distance: true, duration: true, status: true, snap: false },
     durFormat: "min", // "min" | "hhmm"
+    mode: "geo", // Default: "geo" (LKZ/PLZ → Zentroid) | "route" (fertige Koordinaten)
   };
 
   let officeInitialized = false;
@@ -86,7 +91,9 @@
     $("segUsed").onclick = () => setScope("used");
     $("segSel").onclick = () => setScope("selection");
     $("hasHeader").onchange = refreshContext;
-    TARGETS.forEach((t) => ($(t).onchange = updateRunState));
+    ALL_TARGETS.forEach((t) => ($(t).onchange = updateRunState));
+    $("modeRoute").onclick = () => setMode("route");
+    $("modeGeo").onclick = () => setMode("geo");
     $("runBtn").onclick = run;
     $("tokenSave").onclick = onTokenSave;
     $("tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") onTokenSave(); });
@@ -101,13 +108,18 @@
   function loadSettings() {
     try {
       const s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null");
-      if (s && s.cols) { Object.assign(settings.cols, s.cols); settings.durFormat = s.durFormat === "hhmm" ? "hhmm" : "min"; }
+      if (s && s.cols) {
+        Object.assign(settings.cols, s.cols);
+        settings.durFormat = s.durFormat === "hhmm" ? "hhmm" : "min";
+        settings.mode = s.mode === "route" ? "route" : "geo"; // Default geo, nur explizit route respektieren
+      }
     } catch {}
     $("col_distance").checked = settings.cols.distance;
     $("col_duration").checked = settings.cols.duration;
     $("col_status").checked = settings.cols.status;
     $("col_snap").checked = settings.cols.snap;
     setDurFormat(settings.durFormat, false);
+    setMode(settings.mode, false);
   }
   const saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} };
 
@@ -125,12 +137,32 @@
     $("durHhmm").setAttribute("aria-pressed", settings.durFormat === "hhmm");
     if (persist) saveSettings();
   }
+  // Eingabemodus umschalten: Koordinaten („route") vs. LKZ/PLZ („geo").
+  function setMode(mode, persist = true) {
+    settings.mode = mode === "geo" ? "geo" : "route";
+    $("modeRoute").setAttribute("aria-pressed", settings.mode === "route");
+    $("modeGeo").setAttribute("aria-pressed", settings.mode === "geo");
+    $("grid_coords").hidden = settings.mode !== "route";
+    $("grid_plz").hidden = settings.mode !== "geo";
+    $("modeHint").hidden = settings.mode !== "geo";
+    if (persist) saveSettings();
+    if (state.ctx) fillSelects(state.ctx.headers);
+    updateRunState();
+  }
+
   function openSettings() { $("settings").hidden = false; $("main").style.display = "none"; }
   function closeSettings() { $("settings").hidden = true; if (state.authed) $("main").style.display = ""; }
 
   // Welche Ergebnis-Spalten geschrieben werden (Reihenfolge + Header + Formatierung)
   function outputSpec() {
     const spec = [];
+    // Im Geocoding-Modus die hergeleiteten Koordinaten sichtbar voranstellen.
+    if (settings.mode === "geo") {
+      spec.push({ header: "origin_lat", val: (r) => numOrBlank(r.origin_lat) });
+      spec.push({ header: "origin_lon", val: (r) => numOrBlank(r.origin_lon) });
+      spec.push({ header: "dest_lat", val: (r) => numOrBlank(r.dest_lat) });
+      spec.push({ header: "dest_lon", val: (r) => numOrBlank(r.dest_lon) });
+    }
     if (settings.cols.distance) spec.push({ header: "distance_km", val: (r) => numOrBlank(r.distance_km) });
     if (settings.cols.duration) {
       if (settings.durFormat === "hhmm") spec.push({ header: "duration_hhmm", val: (r) => hhmm(r.duration_min) });
@@ -285,7 +317,7 @@
 
   function fillSelects(headers) {
     const guess = suggest(headers);
-    TARGETS.forEach((t) => {
+    targets().forEach((t) => {
       const sel = $(t);
       const prev = sel.value;
       sel.innerHTML = "";
@@ -310,14 +342,21 @@
       origin_lon: find(/^(origin|start|von).*(lon|lng|länge|x)|^lon|länge/),
       dest_lat: find(/^(dest|ziel|nach|to).*(lat|breite|y)/),
       dest_lon: find(/^(dest|ziel|nach|to).*(lon|lng|länge|x)/),
+      origin_lkz: find(/^(origin|start|von|abs).*(lkz|land|country|iso|nation)|^(lkz|land|country|iso|nation)/),
+      origin_plz: find(/^(origin|start|von|abs).*(plz|postleit|zip)|^(plz|postleit|zip)/),
+      dest_lkz: find(/^(dest|ziel|nach|to|emp).*(lkz|land|country|iso|nation)/),
+      dest_plz: find(/^(dest|ziel|nach|to|emp).*(plz|postleit|zip)/),
     };
   }
 
   function updateRunState() {
     const c = state.ctx;
-    const anyCol = settings.cols.distance || settings.cols.duration || settings.cols.status || settings.cols.snap;
+    // Im Geocoding-Modus entstehen immer Koordinatenspalten → es gibt stets eine Ausgabe.
+    const anyCol =
+      settings.mode === "geo" ||
+      settings.cols.distance || settings.cols.duration || settings.cols.status || settings.cols.snap;
     const ready =
-      state.engineReady && c && c.dataRows > 0 && anyCol && TARGETS.every((t) => $(t).value !== "");
+      state.engineReady && c && c.dataRows > 0 && anyCol && targets().every((t) => $(t).value !== "");
     $("runBtn").disabled = !ready;
   }
 
@@ -327,8 +366,9 @@
     $("results").classList.remove("is-on");
     const c = state.ctx;
     if (!c) return;
+    const geo = settings.mode === "geo";
     const map = {};
-    TARGETS.forEach((t) => (map[t] = parseInt($(t).value, 10)));
+    targets().forEach((t) => (map[t] = parseInt($(t).value, 10)));
 
     setRunning(true);
     const t0 = performance.now();
@@ -346,20 +386,33 @@
         const len = Math.min(BLOCK, n - start);
         const cols = await readBlock(c, map, start, len);
 
-        // lokale Validierung: ungültige Koordinaten markieren, gültige senden
+        // lokale Validierung: ungültige Zeilen markieren, gültige senden
         const block = new Array(len);
         const send = [];
         const sendIdx = [];
         for (let i = 0; i < len; i++) {
-          const oLa = num(cols.origin_lat[i]), oLo = num(cols.origin_lon[i]);
-          const dLa = num(cols.dest_lat[i]), dLo = num(cols.dest_lon[i]);
-          if ([oLa, oLo, dLa, dLo].some((v) => !Number.isFinite(v))) {
-            block[i] = { distance_km: null, duration_min: null, status: "error", snap_m: null };
+          if (geo) {
+            // Geocoding-Modus: LKZ/PLZ je Endpunkt; Auflösung passiert serverseitig.
+            const oLkz = str(cols.origin_lkz[i]), oPlz = str(cols.origin_plz[i]);
+            const dLkz = str(cols.dest_lkz[i]), dPlz = str(cols.dest_plz[i]);
+            if (!oLkz || !oPlz || !dLkz || !dPlz) {
+              block[i] = blank("error");
+            } else {
+              sendIdx.push(i);
+              // Datenminimierung: nur LKZ/PLZ verlassen das Blatt, keine IDs/weiteren Spalten.
+              send.push({ origin_lkz: oLkz, origin_plz: oPlz, dest_lkz: dLkz, dest_plz: dPlz });
+            }
           } else {
-            sendIdx.push(i);
-            // Datenminimierung: NUR die vier Koordinaten verlassen das Blatt (keine IDs,
-            // keine weiteren Spalten), auf 6 Nachkommastellen (~0,1 m) gerundet.
-            send.push({ origin_lat: r6(oLa), origin_lon: r6(oLo), dest_lat: r6(dLa), dest_lon: r6(dLo) });
+            const oLa = num(cols.origin_lat[i]), oLo = num(cols.origin_lon[i]);
+            const dLa = num(cols.dest_lat[i]), dLo = num(cols.dest_lon[i]);
+            if ([oLa, oLo, dLa, dLo].some((v) => !Number.isFinite(v))) {
+              block[i] = blank("error");
+            } else {
+              sendIdx.push(i);
+              // Datenminimierung: NUR die vier Koordinaten verlassen das Blatt (keine IDs,
+              // keine weiteren Spalten), auf 6 Nachkommastellen (~0,1 m) gerundet.
+              send.push({ origin_lat: r6(oLa), origin_lon: r6(oLo), dest_lat: r6(dLa), dest_lon: r6(dLo) });
+            }
           }
         }
         if (send.length) {
@@ -396,20 +449,22 @@
     });
   }
 
-  // 4 Koordinatenspalten eines Blocks lesen (schlank, konstanter Speicher)
+  // 4 Eingabespalten eines Blocks lesen (schlank, konstanter Speicher) — je nach Modus
+  // Koordinaten oder LKZ/PLZ; map enthält genau die aktiven Spalten.
   async function readBlock(c, map, start, len) {
     const out = {};
+    const keys = Object.keys(map);
     await Excel.run(async (ctx) => {
       const sheet = ctx.workbook.worksheets.getActiveWorksheet();
       const startRow = c.rowIndex + (c.hasHeader ? 1 : 0) + start;
       const ranges = {};
-      TARGETS.forEach((t) => {
+      keys.forEach((t) => {
         const r = sheet.getRangeByIndexes(startRow, c.columnIndex + map[t], len, 1);
         r.load("values");
         ranges[t] = r;
       });
       await ctx.sync();
-      TARGETS.forEach((t) => (out[t] = ranges[t].values.map((row) => row[0])));
+      keys.forEach((t) => (out[t] = ranges[t].values.map((row) => row[0])));
     });
     return out;
   }
@@ -500,6 +555,12 @@
     return s;
   }
   const num = (v) => (v === "" || v == null ? NaN : Number(v));
+  const str = (v) => (v == null ? "" : String(v).trim());
   const numOrBlank = (v) => (v == null ? "" : v);
+  // Leeres Ergebnisobjekt (alle Felder, damit outputSpec auch Koordinatenspalten findet)
+  const blank = (status) => ({
+    distance_km: null, duration_min: null, status, snap_m: null,
+    origin_lat: null, origin_lon: null, dest_lat: null, dest_lon: null,
+  });
   const r6 = (v) => Math.round(v * 1e6) / 1e6; // auf ~0,1 m runden
 })();
