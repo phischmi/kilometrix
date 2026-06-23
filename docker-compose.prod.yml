@@ -24,8 +24,13 @@ services:
       OSRM_ROUTED_URL: "http://osrm:5000"
       WORKERS: "8"
       SNAP_LIMIT_M: "100"
+      # Geocoding-Tabelle (LKZ/PLZ -> Zentroid) aus dem gemounteten data-Verzeichnis.
+      GEOCODE_PATH: "/data/plz_centroids.csv"
       AUTH_ENABLED: "true"
       AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET muss in .env gesetzt sein}"
+    volumes:
+      # Der Geocoder laeuft im app-Container und braucht Zugriff auf plz_centroids.csv.
+      - ./data:/data:ro
     depends_on:
       - osrm
     restart: unless-stopped

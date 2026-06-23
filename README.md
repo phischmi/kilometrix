@@ -147,10 +147,11 @@ Let's Encrypt). Vorteile: **echtes TLS** (kein mkcert pro Gerät), **zentrale Ad
 **Variante A — Image aus GHCR ziehen (empfohlen, kein Build auf dem NAS).**
 GitHub Actions ([.github/workflows/docker.yml](.github/workflows/docker.yml)) baut bei jedem Push
 auf `main` das Image und pusht es nach `ghcr.io/phischmi/kilometrix`. Auf dem NAS reichen dann
-`docker-compose.prod.yml`, `.env` und der Graph — **kein Quellcode, kein git**:
+`docker-compose.prod.yml`, `.env`, der Graph und (für Geocoding) `data/plz_centroids.csv` —
+**kein Quellcode, kein git**:
 
 ```bash
-echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* muss daneben liegen
+echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* + data/plz_centroids.csv daneben legen
 docker login ghcr.io -u phischmi                        # einmalig (PAT mit read:packages)
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
