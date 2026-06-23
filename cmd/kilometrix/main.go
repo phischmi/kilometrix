@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/phischmi/kilometrix/internal/build"
 	"github.com/phischmi/kilometrix/internal/config"
+	"github.com/phischmi/kilometrix/internal/osrm"
 	"github.com/phischmi/kilometrix/internal/runtime"
 	"github.com/phischmi/kilometrix/internal/tokens"
 )
@@ -33,6 +35,8 @@ func main() {
 		cmdBuildGeocode(os.Args[2:])
 	case "token":
 		cmdToken(os.Args[2:])
+	case "config":
+		cmdConfig(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -50,6 +54,7 @@ Befehle:
   build-graph    OSRM-Graph bauen (osrm-extract/-partition/-customize)
   build-geocode  PLZ-Zentroid-Tabelle aus GeoNames bauen
   token          Zugangstokens erzeugen/prüfen
+  config         Aufgelöste Konfiguration als JSON ausgeben
 
 'kilometrix <befehl> -h' für Optionen.
 `)
@@ -136,6 +141,33 @@ func cmdToken(args []string) {
 	default:
 		fatal(fmt.Errorf("token: unbekannt %q (create|verify)", args[0]))
 	}
+}
+
+func cmdConfig(args []string) {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	_ = fs.Parse(args)
+	s := config.Load()
+	graphExists := osrm.GraphExists(s.OSRMGraphPath)
+	_, geoErr := os.Stat(s.GeocodePath)
+	out := map[string]any{
+		"osrm_graph_path":    s.OSRMGraphPath,
+		"osrm_algorithm":     s.OSRMAlgorithm,
+		"osrm_routed_url":    s.RoutedBaseURL(),
+		"manage_osrm_routed": s.ManageOSRMRouted,
+		"osrm_routed_mmap":   s.OSRMRoutedMmap,
+		"geocode_path":       s.GeocodePath,
+		"workers":            s.Workers,
+		"snap_limit_m":       s.SnapLimitM,
+		"max_sync_batch":     s.MaxSyncBatch,
+		"auth_enabled":       s.AuthEnabled,
+		"addin_host":         s.AddinHost,
+		"addin_port":         s.AddinPort,
+		"graph_present":      graphExists,
+		"geocode_present":    geoErr == nil,
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(out)
 }
 
 func stdoutLog(s string) { fmt.Println(s) }
