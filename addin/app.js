@@ -5,7 +5,7 @@
 (() => {
   "use strict";
 
-  const API = ""; // same-origin: FastAPI liefert dieses Add-in selbst aus
+  const API = ""; // same-origin: das Backend liefert dieses Add-in selbst aus
   // Zwei Eingabemodi: "route" = fertige Koordinaten, "geo" = LKZ/PLZ → Zentroid (serverseitig).
   const COORD_TARGETS = ["origin_lat", "origin_lon", "dest_lat", "dest_lon"];
   const GEO_TARGETS = ["origin_lkz", "origin_plz", "dest_lkz", "dest_plz"];

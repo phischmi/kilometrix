@@ -1,6 +1,5 @@
-// Package runtime verdrahtet die Komponenten zum laufenden Backend (entspricht dem
-// früheren FastAPI-lifespan): Geocoder laden, osrm-routed ggf. starten, Engine bauen,
-// HTTP(S) bedienen und sauber herunterfahren.
+// Package runtime verdrahtet die Komponenten zum laufenden Backend: Geocoder laden,
+// osrm-routed ggf. starten, Engine bauen, HTTP(S) bedienen und sauber herunterfahren.
 package runtime
 
 import (

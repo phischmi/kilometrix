@@ -1,5 +1,5 @@
 // Package config lädt die Einstellungen aus Umgebungsvariablen und optional einer .env-Datei
-// (keine harten Pfade). Spiegelt die frühere pydantic-Settings-Konfiguration.
+// (keine harten Pfade).
 package config
 
 import (

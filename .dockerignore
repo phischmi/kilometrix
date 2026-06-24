@@ -1,13 +1,5 @@
 .git
-# Python-Reste (für das Go-Image nicht nötig)
-venv/
-.venv/
-backend/
-pyproject.toml
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
+.github/
 # GUI (eigenes Modul, gehört nicht ins Backend-Image)
 gui/
 **/node_modules/
@@ -16,9 +8,7 @@ data/
 certs/
 .env
 kilometrix
-# Sonstiges
-.claude/
-.github/
+# Compose/Doku/Editor
 docker-compose*.yml
-tests/
-scripts/
+.claude/
+.DS_Store
