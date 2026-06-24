@@ -1,27 +1,24 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-
-# venvs
-.venv/
-venv/
-
 # Umgebung
 .env
 
 # OSRM-Graph (groß) + Laufzeit-Artefakte
 data/*.osrm*
 data/*.pbf
-# Geocoding-Tabelle (via scripts/build_geocode.sh erzeugt)
+# Geocoding-Tabelle (via 'kilometrix build-geocode' erzeugt)
 data/plz_centroids.csv
-data/checkpoints/
-data/uploads/
-data/results/
 
 # TLS-Zertifikate (lokal generiert)
 certs/
+
+# Go-Build-Artefakte
+/kilometrix
+/kilometrix.exe
+/dist/
+*.test
+
+# GUI-Build (Wails)
+gui/build/bin/
+gui/frontend/node_modules/
 
 # OS
 .DS_Store

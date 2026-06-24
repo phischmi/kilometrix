@@ -1,0 +1,5 @@
+build/bin
+node_modules
+frontend/dist
+/kilometrix-gui
+frontend/package.json.md5

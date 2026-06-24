@@ -1,150 +1,154 @@
-# CLAUDE.md — Strecken-km-Batch (OSRM Distanz-Tool)
+# CLAUDE.md — Kilometrix (OSRM Distanz-Tool)
 
-> Projektnamen gern anpassen. Diese Datei ist der Kontext für Claude Code.
+> Diese Datei ist der Kontext für Claude Code.
 
 ## Ziel
 Offline-Berechnung von Straßen-Kilometern (und Fahrzeiten) für mehrere tausend
-Origin→Destination-Paare in Deutschland. Eingabe: Excel mit Koordinaten je Paar.
-Ausgabe: dieselbe Tabelle plus `distance_km`, `duration_min`, `status`.
-**Keine externe Routing-API** (keine Limits, keine Kosten, keine Datenweitergabe).
+Origin→Destination-Paare in Deutschland. Eingabe: Excel mit Koordinaten **oder** LKZ/PLZ je Paar.
+Ausgabe: dieselbe Tabelle plus `distance_km`, `duration_min`, `status` (und im Geocoding-Modus
+die hergeleiteten Koordinaten). **Keine externe Routing-API** (keine Limits, keine Kosten,
+keine Datenweitergabe).
 
 ## Harte Randbedingungen (nicht verhandelbar)
 - **Client/Entwicklung ohne Docker:** Auf dem **Windows-Firmenlaptop** (Installation via
-  **Scoop** + pip, keine Admin-Rechte annehmen) und auf **macOS** (Apple Silicon; ggf.
-  x86_64) laufen Backend + Tools als native Prozesse im venv.
-- **Zentraler Betrieb auf dem Linux-NAS läuft via Docker** (Compose hinter Traefik):
-  `osrm` + `app` als Container — siehe `docker-compose*.yml`. Docker gilt also nur für die
-  NAS, nicht für den Firmenlaptop.
+  **Scoop**, keine Admin-Rechte annehmen) und auf **macOS** (Apple Silicon; ggf. x86_64)
+  läuft das Backend als natives Go-Binary, die GUI als native Wails-App.
+- **Zentraler Betrieb auf dem Linux-NAS via Docker** (Compose hinter Traefik): `osrm` + `app`
+  als Container — siehe `docker-compose*.yml`. Docker gilt nur für die NAS, nicht für den Laptop.
 - **Max. 16 GB RAM** auf jeder Zielmaschine.
 - Offline-fähig nach einmaligem Daten-Setup.
 
 ## Stack
-- Python 3.12+ (Voraussetzung für die OSRM-Wheels)
-- FastAPI — schlankes Backend: liefert das Office.js-Add-in aus (same-origin HTTPS),
-  stellt `/route-batch` (JSON) bereit, verwaltet osrm-routed. README ist die Quelle der Wahrheit.
-- **Office.js-Excel-Add-in** — die Bedienoberfläche (Task Pane, liest/schreibt das Blatt
-  direkt). Das frühere Streamlit-Frontend und der Datei-Job-Flow wurden entfernt.
-- OSRM fürs Routing über **osrm-routed** (lokaler HTTP-Subprozess) — siehe "OSRM-Setup".
-- uvicorn, httpx, pydantic-settings. Kein pandas/openpyxl/Streamlit mehr.
+- **Go (≥1.23)** — das gesamte Backend ist ein einzelnes Binary `kilometrix` (reine stdlib,
+  **keine externen Abhängigkeiten**). Subcommands: `serve`, `build-graph`, `build-geocode`,
+  `token`, `config`. README ist die Quelle der Wahrheit.
+- **Office.js-Excel-Add-in** ([`addin/`](addin)) — die Bedienoberfläche (Task Pane, liest/schreibt
+  das Blatt direkt). Wird vom Backend same-origin über HTTPS ausgeliefert.
+- **Wails-Desktop-GUI** ([`gui/`](gui), eigenes Go-Modul + Vanilla TS/Vite/Tailwind) — steuert
+  das Binary über dessen Subcommands. **Nicht** im Docker-Image (separat gehalten).
+- OSRM fürs Routing über **osrm-routed** (lokaler HTTP-Subprozess oder NAS-Container).
 
 ## OSRM-Setup (hier steckt die Komplexität)
-OSRM ist C++. Geprüfte Fakten (Stand 2026):
-- **Offizielle vorgebaute Binaries** für Windows x86_64, macOS (arm64 + x86_64)
-  und Linux liegen in den GitHub-Releases (monatliche v26.x-Releases).
-- **Python-Bindings** (`pip install osrm-bindings`, abi3-Wheels für CPython 3.12+):
-  ⚠️ in der Praxis **nicht nutzbar** — das Wheel ist archiviert und im Datenformat hinter
-  osrm-backend Stable, lädt den Graphen nicht (siehe Routing-Strategie). Wir nutzen osrm-routed.
-- macOS: `brew install osrm-backend` liefert CLI-Tools (`osrm-extract/-partition/-customize`)
-  **und** `osrm-routed` + `car.lua`. Windows: Binaries aus den GitHub-Releases (oneTBB, BZip2).
-- **Kein sauberes Scoop-Paket für OSRM** — Scoop installiert nur Python (und optional git).
-- macOS-Binaries v6+ setzen macOS 15 (Sequoia)+ voraus.
+OSRM ist C++. `kilometrix build-graph` orchestriert die CLI-Tools; das Routing spricht
+`osrm-routed` per HTTP an. Geprüfte Fakten (Stand 2026):
+- **Offizielle vorgebaute Binaries** für Windows x86_64, macOS (arm64+x86_64) und Linux in den
+  GitHub-Releases. macOS: `brew install osrm-backend` liefert `osrm-extract/-partition/-customize`
+  + `osrm-routed` + `car.lua`. Windows: Binaries aus den Releases (oneTBB, BZip2). Kein
+  Scoop-Paket für OSRM.
+- Die früheren Python-`osrm-bindings` sind unbrauchbar (archiviertes Wheel) — daher osrm-routed.
 
 ### Graph einmal bauen, dann verteilen
-Das **Preprocessing** (osrm-extract → osrm-partition → osrm-customize, MLD-Pipeline)
-braucht die CLI-Binaries und ist der speicherhungrige Teil:
-- `germany-latest.osm.pbf` von Geofabrik (~4 GB).
-- Car-Profil Deutschland **passt in 16 GB RAM, aber knapp** — beim Build andere
-  Programme schließen; bei `std::bad_alloc` ein Swapfile anlegen.
-- Die erzeugten `.osrm.*`-Dateien sind **portable Daten**: einmal bauen (Maschine
-  mit dem meisten freien RAM), dann auf Mac/Windows/NAS kopieren und nur abfragen.
+`kilometrix build-graph` (osrm-extract → -partition → -customize, MLD) ist der speicherhungrige
+Teil: `germany-latest.osm.pbf` von Geofabrik (~4 GB), Peak ~7,7 GB beim Customize (passt knapp in
+16 GB). Die erzeugten `data/germany.osrm.*` sind **portabel** — einmal bauen, dann auf
+Mac/Windows/NAS kopieren. Graph + osrm-routed müssen dieselbe osrm-backend-Version haben.
 
 ### Routing-Strategie
-- **`osrm-routed`**, Abfrage per HTTP (`httpx`) auf
-  `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`. Hinter dem schmalen
-  Interface `RoutingEngine` (routing.py) → `HttpEngine`.
-- **Zwei Betriebsarten:** lokal startet das Backend `osrm-routed` selbst als Subprozess
-  (`MANAGE_OSRM_ROUTED=true`, siehe osrm_process.py); auf dem NAS läuft `osrm-routed` als
-  eigener Container und das Backend zeigt nur darauf (`MANAGE_OSRM_ROUTED=false`,
-  `OSRM_ROUTED_URL`).
-- **`--mmap` / `OSRM_ROUTED_MMAP` (Default an):** Graph von der Platte mappen statt komplett
-  ins RAM laden → deutlich weniger Leerlauf-Speicher (wichtig auf der RAM-knappen NAS), erste
-  Abfrage minimal langsamer. Lokal als Flag im Subprozess gesetzt, im Compose im osrm-Command.
-- Die in-process `osrm-bindings` wurden entfernt (archiviertes Wheel, Fingerprint-Mismatch zum
-  aktuell gebauten Graphen — unbrauchbar).
-- Graph standardmäßig mit **LKW-Profil** `profiles/truck.lua` gebaut (von car.lua abgeleitet).
+- `osrm-routed`, Abfrage per HTTP auf `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`.
+  Hinter dem schmalen Interface `routing.Engine` ([`internal/routing`](internal/routing)) →
+  `HTTPEngine`. Achtung: OSRM erwartet (lon, lat).
+- **Zwei Betriebsarten:** lokal startet `serve` osrm-routed selbst als Subprozess
+  (`MANAGE_OSRM_ROUTED=true`, [`internal/osrm`](internal/osrm)); auf dem NAS läuft osrm-routed als
+  eigener Container, das Backend zeigt nur darauf (`MANAGE_OSRM_ROUTED=false`, `OSRM_ROUTED_URL`).
+- **`--mmap` / `OSRM_ROUTED_MMAP` (Default an):** Graph von der Platte mappen statt ins RAM laden
+  → weniger Leerlauf-Speicher (wichtig auf der RAM-knappen NAS), erste Abfrage minimal langsamer.
+- Graph standardmäßig mit **LKW-Profil** `profiles/truck.lua` (von car.lua abgeleitet).
+
+## Geocoding (LKZ/PLZ → Zentroid)
+- `kilometrix build-geocode` lädt den GeoNames-Postal-Datensatz (CC BY 4.0) und schreibt
+  **nativ in Go** `data/plz_centroids.csv` (`country,plz,lat,lon`, Zentroid je PLZ).
+- Im `/route-batch` wird jeder Endpunkt **entweder** über Koordinaten **oder** über LKZ/PLZ
+  angegeben; LKZ/PLZ wird serverseitig im selben Aufruf aufgelöst (ein Round-Trip, mit Dedupe).
+  Unbekannte PLZ → Status `plz_not_found`. LKZ = ISO-3166 alpha-2, DE-PLZ werden auf 5 Stellen
+  aufgefüllt. [`internal/geocode`](internal/geocode).
 
 ## Datenfluss (Office.js-Add-in)
-0. Add-in nur in Excel funktionsfähig: wird die Seite außerhalb von Excel (z. B. direkt
-   im Browser) geöffnet, zeigt das Add-in einen Hinweis statt des funktionslosen UIs
-   (Erkennung über `Office.onReady`-Host + Timeout-Fallback).
-1. Task Pane öffnen; Bereich (ganzes Blatt / Markierung) + Spalten-Mapping wählen
-   (`origin_lat`, `origin_lon`, `dest_lat`, `dest_lon`).
-2. „Strecken berechnen" → das Add-in liest die Koordinaten **blockweise** (2000 Zeilen).
-3. Pro Block: `POST /route-batch` (JSON) → FastAPI rechnet parallel über die Engine.
-4. Ergebnis je Block sofort in die Nachbarspalten geschrieben: `distance_km`,
-   `duration_min`, `status` (ok / snapped_far / no_route / error), `snap_m`.
-   Fortschrittsbalken läuft mit.
+0. Add-in nur in Excel funktionsfähig: außerhalb (z. B. im Browser) Hinweis statt UI
+   (`Office.onReady`-Host + Timeout-Fallback).
+1. Task Pane öffnen; Bereich + **Modus** wählen: „Geocoding + Routing" (LKZ+PLZ je Start/Ziel,
+   Standard) oder „Nur Routing" (lat/lon). Spalten-Mapping wählen.
+2. „Strecken berechnen" → Add-in liest **blockweise** (2000 Zeilen).
+3. Pro Block: `POST /route-batch` (JSON) → Backend löst ggf. LKZ/PLZ auf und routet parallel.
+4. Ergebnis je Block sofort in die Nachbarspalten: ggf. `origin/dest_lat/lon`, `distance_km`,
+   `duration_min`, `status` (ok / snapped_far / no_route / error / plz_not_found), `snap_m`.
 
 ## Verarbeitung — Details
-- Pro Paar: kürzeste Fahrstrecke, Distanz m → km (2 Nachkommastellen), Dauer in Minuten.
-- Concurrency: Thread-Pool (`WORKERS`, Default 8 = gemessener Sweet Spot) pro /route-batch.
-- **Snapping-Plausi:** OSRM snappt auf die nächste routbare Kante. Snap-Distanz prüfen;
-  wenn > Schwelle (`SNAP_LIMIT_M`), in `status` als `snapped_far` markieren.
-- **Große Blätter:** Statt serverseitigem Checkpointing schreibt das Add-in streamend
-  blockweise zurück — Teilergebnisse stehen sofort im Blatt, Speicher bleibt konstant.
-- Robuste Fehlerbehandlung pro Zeile — eine kaputte Zeile (z. B. leere Koordinate) wird
-  als `error` markiert, der Lauf läuft weiter.
-- Nur Deutschland-Extract: rein innerdeutsche Strecken ok. Grenznahe Routen, die kürzer
-  durchs Ausland gingen, werden leicht zu lang — bei Bedarf DACH+-Extract.
+- Pro Paar: kürzeste Fahrstrecke, m → km (2 NK), Dauer in Minuten.
+- Concurrency: Worker-Pool (`WORKERS`, Default 8) pro /route-batch.
+- **Snapping-Plausi:** Snap-Distanz prüfen; > `SNAP_LIMIT_M` → `snapped_far` (bei PLZ-Zentroiden
+  erwartbar häufig, da grob).
+- **Große Blätter:** Add-in schreibt streamend blockweise zurück — Teilergebnisse sofort,
+  Speicher konstant.
+- Robuste Fehlerbehandlung pro Zeile.
+- Nur Deutschland-Extract: grenznahe Routen über Ausland werden leicht zu lang — bei Bedarf DACH+.
 
 ## Projektstruktur
 ```
 .
-├── CLAUDE.md  ·  README.md (Quelle der Wahrheit)  ·  pyproject.toml  ·  .env.example
-├── docker-compose.yml       # NAS-Betrieb (Traefik): osrm + app, App-Image lokal gebaut
-├── docker-compose.prod.yml  # NAS-Betrieb: App-Image aus GHCR (CI-Build) ziehen
-├── data/                    # germany.osrm.* (gitignored, groß)
-├── backend/
-│   ├── main.py              # FastAPI: Add-in-Auslieferung, /health, /route-batch
-│   ├── routing.py           # Engine-Interface: HttpEngine (osrm-routed)
-│   ├── geocode.py           # LKZ/PLZ -> Zentroid (offline, data/plz_centroids.csv)
-│   ├── osrm_process.py      # osrm-routed als Subprozess starten/stoppen
-│   └── config.py            # Settings via .env
-├── addin/                   # Office.js-Add-in (manifest.xml, taskpane.html, styles.css, app.js)
-└── scripts/
-    ├── build_graph.(sh|ps1)   # einmaliges OSRM-Preprocessing
-    ├── build_geocode.(sh|ps1) # Geocoding-Setup (GeoNames -> plz_centroids.csv)
-    └── serve_addin.sh         # HTTPS-Backend (Cert + :8443) für das Add-in
+├── CLAUDE.md  ·  README.md (Quelle der Wahrheit)  ·  go.mod  ·  .env.example
+├── Dockerfile               # Multi-Stage Go → distroless (Backend-Image, NAS)
+├── docker-compose.yml       # NAS: osrm + app, App-Image lokal gebaut
+├── docker-compose.prod.yml  # NAS: App-Image aus GHCR (CI-Build) ziehen
+├── data/                    # germany.osrm.*, plz_centroids.csv (gitignored)
+├── profiles/truck.lua       # LKW-Profil für build-graph
+├── cmd/kilometrix/          # CLI-Entry: serve | build-graph | build-geocode | token | config
+├── internal/
+│   ├── config/   # Settings via env + .env
+│   ├── server/   # /health, /auth/check, /route-batch, Add-in-Auslieferung, CORS
+│   ├── routing/  # Engine-Interface + HTTPEngine (osrm-routed), Worker-Pool
+│   ├── geocode/  # LKZ/PLZ -> Zentroid (data/plz_centroids.csv)
+│   ├── osrm/     # osrm-routed als Subprozess
+│   ├── tokens/   # HMAC-Tokens (format-kompatibel zur alten Python-Variante)
+│   ├── build/    # build-graph (orchestriert osrm-*) + build-geocode (nativ)
+│   ├── tlscert/  # selbstsigniertes localhost-Zertifikat (HTTPS lokal)
+│   └── runtime/  # serve-Verdrahtung + graceful shutdown
+├── addin/                   # Office.js-Add-in (manifest*.xml, taskpane.html, styles.css, app.js)
+└── gui/                     # Wails-App (eigenes Modul; app.go + frontend/, nicht im Docker)
 ```
 
 ## Commands
 ```bash
-# Setup (Mac/Linux)
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+# Bauen + Test
+go build -o kilometrix ./cmd/kilometrix      # Windows: kilometrix.exe
+go test ./...
 
-# Setup (Windows, Scoop)
-scoop install python
-python -m venv .venv && .venv\Scripts\activate
-pip install -e .
+# Daten (einmalig)
+./kilometrix build-graph
+./kilometrix build-geocode
 
-# Add-in-Backend starten (HTTPS, startet osrm-routed selbst)
-./scripts/serve_addin.sh        # https://127.0.0.1:8443/addin/taskpane.html
+# Lokal starten (HTTPS, startet osrm-routed selbst)
+./kilometrix serve                            # https://127.0.0.1:8443/addin/taskpane.html
 
-# Tests
-pytest
+# GUI (Dev)
+cd gui && wails dev
 
-# NAS (Docker, zentraler Betrieb hinter Traefik)
-docker compose -f docker-compose.prod.yml pull   # App-Image aus GHCR
-docker compose -f docker-compose.prod.yml up -d   # osrm + app als Container
+# NAS (Docker)
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml exec app kilometrix token create --name X --days 90
 ```
 
 ## Konventionen
-- Type Hints überall, kleine fokussierte Funktionen, sprechende Namen.
-- Routing-Engine hinter einem schmalen Interface (`RoutingEngine` in routing.py).
-- Keine harten Pfade; Konfiguration (Graph-Pfad, Worker-Zahl, Snap-Limit) via .env/Settings.
+- Idiomatischer Go-Code: kleine fokussierte Funktionen, sprechende Namen, Fehler explizit
+  zurückgeben. Routing hinter dem schmalen Interface `routing.Engine`.
+- **Keine externen Go-Abhängigkeiten im Backend** (nur stdlib) — bewusst so halten.
+- Keine harten Pfade; Konfiguration via env/.env (gleiche Variablennamen wie zuvor:
+  `OSRM_*`, `GEOCODE_PATH`, `WORKERS`, `SNAP_LIMIT_M`, `AUTH_*`, `ADDIN_*`).
 - Kommentare/Antworten auf Deutsch sind ok.
 
 ## Geklärte Punkte (Stand: erledigt)
-1. ✅ Bindings-API verifiziert → Wheel inkompatibel, daher osrm-routed (HTTP) genutzt.
-2. ✅ Excel-Schema: getrennte Spalten `origin_lat/lon, dest_lat/lon`, eine Route pro Zeile.
-3. ✅ Graph-Build auf M4 (16 GB): Peak ~7,7 GB beim Customize — passt.
-4. Bedienung erfolgt über das Office.js-Add-in (kein Streamlit/Datei-Flow mehr).
-5. ✅ Produktiv-Betrieb läuft via Docker-Compose auf der NAS (osrm + app hinter Traefik).
-6. ✅ `osrm-routed` mit `--mmap` (`OSRM_ROUTED_MMAP`, Default an) → weniger Leerlauf-RAM,
-   sowohl im lokalen Subprozess als auch im Compose-Command gesetzt.
-7. ✅ Add-in zeigt außerhalb von Excel einen Hinweis statt funktionslosem UI.
-8. ✅ Geocoding aus LKZ/PLZ (offline, Zentroide aus GeoNames via build_geocode): LKZ als
-   ISO-3166 alpha-2, DE-only. Add-in-Umschalter „Nur Routing" / „Geocoding + Routing"; die
-   Auflösung passiert in `/route-batch` (ein Round-Trip, Dedupe), hergeleitete Koordinaten
-   werden sichtbar ins Blatt geschrieben, unbekannte PLZ → Status `plz_not_found`.
+1. ✅ Backend von FastAPI/Python **komplett nach Go portiert** (Funktionsparität); ein statisches
+   Binary mit Subcommands, keine externen Deps. Python entfernt.
+2. ✅ Routing über osrm-routed (HTTP); osrm-bindings unbrauchbar.
+3. ✅ Excel-Schema: getrennte Spalten `origin/dest_lat/lon` **oder** `origin/dest_lkz/plz`.
+4. ✅ Graph-Build Peak ~7,7 GB (16 GB ok). `--mmap` Default an.
+5. ✅ Bedienung über Office.js-Add-in; Add-in zeigt außerhalb von Excel einen Hinweis.
+6. ✅ Geocoding LKZ/PLZ (offline, GeoNames, DE-only, ISO-3166 alpha-2): Auflösung in
+   `/route-batch` mit Dedupe, sichtbare Koordinaten, `plz_not_found`. Add-in-Umschalter,
+   „Geocoding + Routing" ist Default.
+7. ✅ Tokens HMAC, **format-kompatibel** zur alten Python-Variante (bestehende Tokens bleiben mit
+   gleichem `AUTH_SECRET` gültig).
+8. ✅ Zentraler Betrieb via Docker (osrm + app hinter Traefik); App-Image = Multi-Stage Go →
+   distroless. Compose unverändert (gleiche Env-Namen, Traefik-Port 8000).
+9. ✅ Wails-GUI zur Backend-Steuerung (Design folgt dem Task Pane + System-Dark-Mode); separat,
+   nicht im Docker-Image.

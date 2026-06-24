@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+/* Self-hosted Fonts (offline), identisch zum Task Pane */
+@font-face { font-family: "Hanken Grotesk"; src: url("./assets/fonts/hanken-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Hanken Grotesk"; src: url("./assets/fonts/hanken-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Hanken Grotesk"; src: url("./assets/fonts/hanken-600.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Hanken Grotesk"; src: url("./assets/fonts/hanken-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("./assets/fonts/jetbrains-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("./assets/fonts/jetbrains-700.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+/* Design-Tokens des Task Pane als Tailwind-Theme (→ Utilities wie bg-petrol, text-muted) */
+@theme {
+  --color-bg: #ffffff;
+  --color-surface: #f7f8f6;
+  --color-ink: #131c1a;
+  --color-muted: #6b726d;
+  --color-faint: #a2a8a1;
+  --color-line: #ededE7;
+  --color-line2: #e2e3dc;
+  --color-petrol: #1d4ed8;
+  --color-petrol-dk: #1942b0;
+  --color-petrol-soft: #eaeefc;
+  --color-amber: #e0466a;
+  --color-green: #1c8a5b;
+  --color-red: #c0432f;
+  --font-sans: "Hanken Grotesk", -apple-system, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Dark-Mode folgt der System-Einstellung (wie das Task Pane). Tailwind-v4-Utilities
+   referenzieren die Theme-Variablen → Überschreiben der --color-* genügt. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #161d27;       /* Karten/Inputs */
+    --color-surface: #0f141b;  /* Seitenhintergrund */
+    --color-ink: #e8eaef;
+    --color-muted: #9aa1ac;
+    --color-faint: #686f7a;
+    --color-line: #1e2530;
+    --color-line2: #2a323e;
+    --color-petrol: #6b93f5;
+    --color-petrol-dk: #557fe8;
+    --color-petrol-soft: #18233b;
+    --color-amber: #f4768c;
+    --color-green: #36bb80;
+    --color-red: #e26a54;
+  }
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.5;
+  user-select: none;
+}
+
+/* Eigene Komponenten-Klassen für wiederkehrende Muster */
+@layer components {
+  .card { @apply bg-bg border border-line rounded-xl p-4 shadow-[0_1px_2px_rgba(19,28,26,0.04)]; }
+  .card-title { @apply text-[11px] font-semibold uppercase tracking-wide text-muted mb-3; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer; }
+  .btn-primary { @apply bg-petrol text-white hover:bg-petrol-dk; }
+  .btn-ghost { @apply border border-line2 text-ink hover:bg-surface; }
+  .btn-danger { @apply bg-red text-white hover:opacity-90; }
+  .input { @apply w-full rounded-lg border border-line2 bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-petrol focus:ring-2 focus:ring-petrol-soft; }
+  .dot { @apply inline-block h-2 w-2 rounded-full; }
+  .kbd { @apply font-mono text-[12px]; }
+}

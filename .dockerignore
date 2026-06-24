@@ -1,14 +1,14 @@
 .git
-venv/
-.venv/
+.github/
+# GUI (eigenes Modul, gehört nicht ins Backend-Image)
+gui/
+**/node_modules/
+# Daten/Secrets/Build-Artefakte
 data/
 certs/
 .env
-__pycache__/
-*.pyc
-.pytest_cache/
-*.egg-info/
-.claude/
-.github/
+kilometrix
+# Compose/Doku/Editor
 docker-compose*.yml
-tests/
+.claude/
+.DS_Store
