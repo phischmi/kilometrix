@@ -1,158 +1,145 @@
 # Kilometrix — OSRM Distanz-Tool
 
 Offline-Berechnung von Straßen-Kilometern und Fahrzeiten für Origin→Destination-Paare
-in Deutschland (LKW-optimiert). Keine externe Routing-API. Routing läuft über `osrm-routed`
-— **lokal** als vom Backend verwalteter Subprozess, **zentral (NAS)** als eigener
-Docker-Container (siehe [Zentraler Betrieb](#zentraler-betrieb-docker-poc)).
+in Deutschland (LKW-optimiert). Keine externe Routing-API. Das Backend ist ein **einzelnes
+Go-Binary** (`kilometrix`, reine stdlib, keine Abhängigkeiten); gerechnet wird über
+`osrm-routed` — **lokal** als vom Backend verwalteter Subprozess, **zentral (NAS)** als
+eigener Docker-Container (siehe [Zentraler Betrieb](#zentraler-betrieb-docker)).
+
+Bedient wird es über ein **Office.js-Excel-Add-in**; für die lokale Steuerung (Server starten,
+Graph/Geocoding bauen, Tokens) gibt es zusätzlich eine **Wails-Desktop-GUI** (siehe [`gui/`](gui/)).
+
+## Komponenten
+
+| Teil | Pfad | Zweck |
+|------|------|-------|
+| Backend-Binary | [`cmd/kilometrix`](cmd/kilometrix), [`internal/`](internal) | `serve`, `build-graph`, `build-geocode`, `token`, `config` |
+| Excel-Add-in | [`addin/`](addin) | Task Pane (liest/schreibt das Blatt, ruft `/route-batch`) |
+| Desktop-GUI | [`gui/`](gui) | Wails-App zur Backend-Steuerung (separat, nicht im Docker-Image) |
 
 ## Setup
 
 ```bash
-# Mac
-brew install osrm-backend                 # liefert osrm-extract/-partition/-customize/-routed + car.lua
-python -m venv venv && source venv/bin/activate
-pip install -e ".[dev]"
+# macOS
+brew install go
+brew install osrm-backend          # osrm-extract/-partition/-customize/-routed + car.lua
 
-# Windows (Scoop)
-scoop install python
-python -m venv venv && venv\Scripts\activate
-pip install -e ".[dev]"
-# osrm-backend-Binaries (inkl. osrm-routed) aus den GitHub-Releases / per Paketmanager bereitstellen.
+# Windows (Scoop, kein Admin)
+scoop install go
+# osrm-backend-Binaries (inkl. osrm-routed) aus den GitHub-Releases bereitstellen.
 ```
 
-`.env.example` nach `.env` kopieren und anpassen.
-
-## OSRM-Graph (separat, einmalig)
-
-Der Graph wird **getrennt vom Tool** mit den osrm-backend-CLI-Tools gebaut — standardmäßig
-mit dem **LKW-Profil** [`profiles/truck.lua`](profiles/truck.lua):
+Backend bauen:
 
 ```bash
-./scripts/build_graph.sh        # lädt germany.osm.pbf, baut data/germany.osrm.* (LKW-Profil)
+go build -o kilometrix ./cmd/kilometrix     # Windows: kilometrix.exe
+go test ./...                                # Tests
 ```
 
-`truck.lua` ist von `car.lua` abgeleitet (Maße 4,0 m / 2,55 m / 16,5 m / 40 t, `hgv`-Zugang,
-LKW-Geschwindigkeiten, Tempo-Limit 89). Das Skript kopiert das Profil neben das von
-osrm-backend mitgelieferte `car.lua`, damit dessen `lib/` gefunden wird (`car.lua` dient nur
-noch als lib-Quelle). Anderes Profil: `OSRM_PROFILE=<pfad> ./scripts/build_graph.sh`.
+`.env.example` nach `.env` kopieren und anpassen (Pfade, Worker, Auth …).
 
-Die erzeugten `data/germany.osrm.*` sind portabel: einmal bauen, dann auf Windows/NAS kopieren.
-**Wichtig:** Der Graph muss mit derselben osrm-backend-Version gebaut werden wie das
-`osrm-routed`, das ihn lädt. `OSRM_GRAPH_PATH` / `OSRM_ALGORITHM` (MLD) in `.env` setzen.
+## Daten bauen (einmalig)
 
-**RAM / `--mmap`:** `osrm-routed` mappt den Graphen standardmäßig per Memory-Mapping von der
-Platte, statt ihn komplett ins RAM zu laden (`OSRM_ROUTED_MMAP=true`; im Compose als `--mmap`
-im osrm-Command gesetzt). Das senkt den Leerlauf-Speicher deutlich — wichtig auf der
-RAM-knappen NAS —, die erste Abfrage ist dafür minimal langsamer (auf SSD vernachlässigbar).
-Auf `false` setzen, wenn der Graph fest ins RAM geladen werden soll.
-
-> **Hinweis:** `truck.lua` ist ein **Startprofil** — Syntax geprüft, aber vor dem
-> Produktiveinsatz an echten Routen verifizieren und Maße/Gewicht ggf. an die Flotte
-> anpassen. OSRM ist „truck-aware" (HGV-Sperren, Maß-/Gewichtsbeschränkungen aus OSM),
-> aber kein Voll-Truck-Router — die Genauigkeit hängt an den OSM-Daten.
-
-## Koordinaten aus LKZ/PLZ herleiten (optional)
-
-Liegen statt Koordinaten nur **LKZ + PLZ** vor (z. B. `DE` / `80331`), kann Kilometrix die
-Koordinaten **offline aus PLZ-Zentroiden** herleiten. Dazu wird einmalig eine kompakte Tabelle
-gebaut — analog zum Graph, separat vom Tool:
+Beide Schritte sind Subcommands des Binaries — kein separates Skript mehr.
 
 ```bash
-./scripts/build_geocode.sh        # macOS/Linux
-.\scripts\build_geocode.ps1       # Windows (PowerShell)
+# OSRM-Graph (orchestriert osrm-extract/-partition/-customize, LKW-Profil profiles/truck.lua)
+./kilometrix build-graph         # lädt germany.osm.pbf, baut data/germany.osrm.*
+
+# Geocoding-Tabelle (LKZ/PLZ → Zentroid; nativ in Go, GeoNames CC BY 4.0)
+./kilometrix build-geocode       # lädt GeoNames DE, schreibt data/plz_centroids.csv
 ```
 
-Das Skript lädt den GeoNames-Postal-Datensatz (Standard: Deutschland, `GEONAMES_COUNTRY=DE`),
-mittelt je PLZ den **Zentroid** der Ortsteile und schreibt `data/plz_centroids.csv`
-(`country,plz,lat,lon`). Die Datei ist winzig (~10.000 DE-PLZ) und **portabel** — einmal bauen,
-dann nach Windows/NAS kopieren. Quelle: [GeoNames](https://download.geonames.org/export/zip/)
-(CC BY 4.0). Pfad via `GEOCODE_PATH` in `.env`. `GET /health` zeigt `geocode_ready: true`,
-sobald die Tabelle geladen ist; fehlt sie, bleibt nur der Modus „Nur Routing".
+Der Graph passt knapp in 16 GB RAM (Peak beim Customize ~7,7 GB). Die erzeugten
+`data/germany.osrm.*` und `data/plz_centroids.csv` sind **portabel**: einmal bauen, dann auf
+Windows/NAS kopieren. Der Graph muss mit derselben osrm-backend-Version gebaut werden wie das
+`osrm-routed`, das ihn lädt.
 
-Im Add-in schaltet ein Umschalter zwischen **„Geocoding + Routing"** (Spalten LKZ + PLZ für
-Start und Ziel, **Standard**) und **„Nur Routing"** (Koordinatenspalten wie bisher). Im Geocoding-Modus löst
-das Backend die Koordinaten innerhalb desselben `/route-batch`-Aufrufs auf (kein zweiter Aufruf),
-schreibt die hergeleiteten `origin_lat/lon`, `dest_lat/lon` sichtbar ins Blatt und routet direkt.
-Unbekannte PLZ erscheinen als Status `plz_not_found`.
+> **`truck.lua`** ist von `car.lua` abgeleitet (4,0 m / 2,55 m / 16,5 m / 40 t, `hgv`-Zugang) und
+> ein **Startprofil** — vor dem Produktiveinsatz an echten Routen verifizieren. OSRM ist
+> „truck-aware", aber kein Voll-Truck-Router; die Genauigkeit hängt an den OSM-Daten.
 
-> **Hinweis:** PLZ-Zentroide sind grob (Ortsmitte) — die nächste routbare Straße liegt oft
-> einige Hundert Meter entfernt, daher werden viele Geocoding-Strecken als `snapped_far`
-> markiert. Das ist hier **erwartet** und kein Fehler. LKZ wird als ISO-3166 alpha-2 erwartet
-> (`DE`, `AT`, …); der Standard-Datensatz deckt Deutschland ab (passend zum Germany-Graph).
+## Lokal starten (HTTPS für das Add-in)
+
+```bash
+./kilometrix serve               # https://127.0.0.1:8443 ; startet osrm-routed selbst
+```
+
+`serve` erzeugt bei Bedarf ein selbstsigniertes localhost-Zertifikat in `certs/` (oder nutzt ein
+vorhandenes von `mkcert`) und startet `osrm-routed` als Subprozess. `GET /health` zeigt
+`engine_ready: true`, sobald der Graph geladen ist, und `geocode_ready: true`, sobald die
+PLZ-Tabelle vorhanden ist. Optionen: `kilometrix serve -h`.
+
+> **RAM / `--mmap`:** `osrm-routed` mappt den Graphen standardmäßig von der Platte statt ihn ganz
+> ins RAM zu laden (`OSRM_ROUTED_MMAP=true`). Senkt den Leerlauf-Speicher; erste Abfrage minimal
+> langsamer. Auf `false` setzen, wenn der Graph fest ins RAM soll.
+
+### Desktop-GUI (optional, komfortabler)
+
+Statt des Terminals kann die Wails-GUI das Backend steuern (Server start/stop, Graph/Geocoding
+bauen mit Live-Log, Tokens, Status). Siehe [`gui/`](gui):
+
+```bash
+go build -o kilometrix ./cmd/kilometrix     # Backend-Binary (die GUI ruft es auf)
+cd gui && wails dev                          # Dev-Fenster mit Hot-Reload
+# oder: wails build  → gui/build/bin/kilometrix-gui.app (.exe unter Windows)
+```
+
+## Koordinaten aus LKZ/PLZ herleiten
+
+Liegen statt Koordinaten nur **LKZ + PLZ** vor (z. B. `DE` / `80331`), leitet Kilometrix die
+Koordinaten **offline aus PLZ-Zentroiden** her (`build-geocode`, s. o.). Im Add-in schaltet ein
+Umschalter zwischen **„Geocoding + Routing"** (Spalten LKZ + PLZ für Start und Ziel, **Standard**)
+und **„Nur Routing"** (Koordinatenspalten). Im Geocoding-Modus löst das Backend die Koordinaten
+innerhalb desselben `/route-batch`-Aufrufs auf (ein Round-Trip, mit Dedupe), schreibt die
+hergeleiteten `origin_lat/lon`, `dest_lat/lon` sichtbar ins Blatt und routet direkt. Unbekannte
+PLZ erscheinen als Status `plz_not_found`.
+
+> **Hinweis:** PLZ-Zentroide sind grob (Ortsmitte) — viele Geocoding-Strecken werden daher als
+> `snapped_far` markiert. Das ist **erwartet** und kein Fehler. LKZ wird als ISO-3166 alpha-2
+> erwartet (`DE`, `AT`, …); der Standard-Datensatz deckt Deutschland ab.
 
 ## Bedienung: Excel-Add-in (Office.js)
 
-Kilometrix wird **direkt in Excel** bedient: ein Task Pane („Strecken berechnen") liest die
-Koordinaten aus dem aktiven Blatt, ruft das Backend und schreibt `distance_km, duration_min,
-status, snap_m` in die Nachbarspalten zurück.
-Cross-Platform (Windows/Mac), unabhängig von der VBA-Makro-Policy, vollständig offline.
-Die Add-in-Seite funktioniert nur in Excel: außerhalb (z. B. direkt im Browser aufgerufen)
-zeigt sie einen Hinweis statt der funktionslosen Oberfläche.
-
-Architektur: FastAPI liefert das Add-in **selbst über HTTPS** aus (same-origin) und stellt
-`/route-batch` bereit; gerechnet wird über `osrm-routed`. Das läuft **lokal** als ein Prozess
-oder **zentral** als zwei Container hinter Traefik (siehe unten).
+Kilometrix wird **direkt in Excel** bedient: ein Task Pane liest die Eingaben aus dem aktiven
+Blatt, ruft das Backend und schreibt `distance_km, duration_min, status, snap_m` (und im
+Geocoding-Modus die hergeleiteten Koordinaten) in die Nachbarspalten. Cross-Platform (Windows/Mac),
+unabhängig von der VBA-Makro-Policy, vollständig offline. Außerhalb von Excel zeigt die Seite
+einen Hinweis statt der funktionslosen Oberfläche.
 
 **Sehr große Blätter:** Das Add-in arbeitet **streamend in Blöcken** (2000 Zeilen): lesen →
 berechnen → zurückschreiben pro Block. Der Speicher bleibt konstant, Teilergebnisse erscheinen
-sofort, der Fortschrittsbalken läuft mit — so sind auch Blätter mit hunderttausenden Zeilen
-ohne Office.js-Payload-Limits machbar.
+sofort.
 
-### Backend starten — lokal **oder** per Docker
-
-- **Lokal** (einzelner Rechner; Add-in unter `https://127.0.0.1:8443`):
-  ```bash
-  ./scripts/serve_addin.sh        # macOS/Linux
-  .\scripts\serve_addin.ps1       # Windows (PowerShell)
-  ```
-  Erzeugt ein localhost-Zertifikat, startet HTTPS auf :8443 und `osrm-routed`. Zertifikat
-  vertrauen: am einfachsten mit `mkcert` (`brew install mkcert` / `scoop install mkcert`,
-  per-User, kein Admin); ohne mkcert wird ein selbstsigniertes erzeugt (die `.ps1` importiert es
-  unter Windows automatisch in `Cert:\CurrentUser\Root`).
-- **Zentral per Docker** (NAS/Server hinter Traefik; Add-in unter der Domain): siehe
-  [Zentraler Betrieb (Docker)](#zentraler-betrieb-docker-poc). Dort übernimmt Traefik +
-  Let's Encrypt das echte TLS — kein mkcert pro Gerät.
-
-`GET /health` zeigt `engine_ready: true`, sobald der Graph geladen ist.
-
-### Add-in in Excel installieren — vertrauenswürdiger Katalog (Netzwerkfreigabe)
+### Add-in installieren — vertrauenswürdiger Katalog (Netzwerkfreigabe)
 
 Das Manifest wird über einen *Vertrauenswürdigen Add-in-Katalog* auf einer **Netzwerkfreigabe
-(UNC-Pfad `\\server\freigabe`)** eingebunden — **nicht** über einen lokalen Ordner oder OneDrive
-(das wird als Katalog nicht erkannt):
+(UNC-Pfad `\\server\freigabe`)** eingebunden — **nicht** über einen lokalen Ordner oder OneDrive:
 
-1. Passendes Manifest auf die Freigabe legen — `addin/manifest.xml` (lokal, `127.0.0.1:8443`)
-   bzw. `addin/manifest.server.xml` (zentral, Domain).
+1. Manifest auf die Freigabe legen — `addin/manifest.xml` (lokal, `127.0.0.1:8443`) bzw.
+   `addin/manifest.server.xml` (zentral, Domain).
 2. Den UNC-Pfad unter *Datei → Optionen → Trust Center → Vertrauenswürdige Add-in-Kataloge*
-   eintragen (Häkchen „Im Menü anzeigen"), **Excel neu starten**.
-3. *Einfügen → Add-Ins →* Reiter **„Freigegebener Ordner"** (nicht „Store") → **Kilometrix**.
+   eintragen („Im Menü anzeigen"), **Excel neu starten**.
+3. *Einfügen → Add-Ins →* Reiter **„Freigegebener Ordner"** → **Kilometrix**.
 
-Das Add-in fügt eine Gruppe **„Kilometrix"** mit dem Button **„Strecken berechnen"** auf dem
-**Start-Reiter** ein — dort ist der Einstieg.
+> **Gesperrte Firmenrechner:** Ist auch der Katalog gesperrt, hilft die zentrale Bereitstellung
+> im **M365-Admin-Center** (`manifest.server.xml`). Ändert man Host/Port/Domain, müssen die URLs
+> im jeweiligen Manifest angepasst werden.
 
-> **Gesperrte Firmenrechner:** Die Meldung „Der Add-in-Store wurde deaktiviert" ist normal — der
-> Reiter **„Freigegebener Ordner"** (Schritt 3) funktioniert trotzdem über den Katalog. Nur wenn
-> die Richtlinie **auch Kataloge** sperrt, hilft die zentrale Bereitstellung im **M365-Admin-Center**
-> (IT): *Einstellungen → Integrierte Apps → benutzerdefinierte App hochladen → `manifest.server.xml`*.
+## Zentraler Betrieb (Docker)
 
-Ändert man Host/Port/Domain, müssen die URLs im jeweiligen Manifest angepasst werden.
+Das Backend kann zentral hinter Traefik (Let's Encrypt) laufen. `docker compose` startet zwei
+Container: `osrm` (offizielles Image, lädt den Graphen) + `app` (das Go-Binary, distroless-Image).
+Auf dem NAS liegen `data/germany.osrm.*` und `data/plz_centroids.csv` im gemounteten `./data`.
 
-## Zentraler Betrieb (Docker, PoC)
-
-Statt auf jedem Laptop lokal kann das Backend zentral laufen (z. B. NAS hinter Traefik mit
-Let's Encrypt). Vorteile: **echtes TLS** (kein mkcert pro Gerät), **zentrale Add-in-Verteilung**
-übers M365-Admin-Center, ein gepflegter Graph. `docker-compose.yml` startet zwei Container:
-`osrm` (offizielles Image, lädt den Graphen) + `app` (FastAPI, hinter Traefik).
-
-**Variante A — Image aus GHCR ziehen (empfohlen, kein Build auf dem NAS).**
-GitHub Actions ([.github/workflows/docker.yml](.github/workflows/docker.yml)) baut bei jedem Push
-auf `main` das Image und pusht es nach `ghcr.io/phischmi/kilometrix`. Auf dem NAS reichen dann
-`docker-compose.prod.yml`, `.env`, der Graph und (für Geocoding) `data/plz_centroids.csv` —
-**kein Quellcode, kein git**:
+**Variante A — Image aus GHCR (empfohlen).** GitHub Actions baut bei Push auf `main` das Image
+([.github/workflows/docker.yml](.github/workflows/docker.yml)) und pusht nach
+`ghcr.io/phischmi/kilometrix`. Auf dem NAS reichen `docker-compose.prod.yml`, `.env`, der Graph
+und die Geocoding-CSV — **kein Quellcode**:
 
 ```bash
-echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env      # data/germany.osrm.* + data/plz_centroids.csv daneben legen
-docker login ghcr.io -u phischmi                        # einmalig (PAT mit read:packages)
+echo "AUTH_SECRET=$(openssl rand -hex 32)" > .env   # data/germany.osrm.* + data/plz_centroids.csv daneben
+docker login ghcr.io -u phischmi                      # einmalig (PAT mit read:packages)
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml exec app kilometrix token create --name philipp --days 90
@@ -166,39 +153,14 @@ docker compose up -d --build
 docker compose exec app kilometrix token create --name philipp --days 90
 ```
 
-In beiden Compose-Dateien ggf. **Netzwerk-Name** (`traefik`) und **certresolver** (`letsencrypt`)
-an deine Traefik-Instanz anpassen; die Domain (`kilometrix.philipp-schmidt.de`) steht in den
-Router-Labels und im `addin/manifest.server.xml`. (Ist das GHCR-Paket privat, braucht das NAS
-einmalig `docker login ghcr.io`.)
+**Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, frei wählbare TTL,
+ohne DB) geschützt. Einzelne Tokens lassen sich nicht gezielt widerrufen — kurze TTL vergeben oder
+mit `AUTH_SECRET` **alle** rotieren (Secret neu setzen, App neu starten).
 
-**Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, definierbare TTL,
-ohne DB) geschützt. Beim ersten Öffnen fragt das Add-in das Token ab (Gate), speichert es lokal
-und sendet es fortan automatisch.
-
-```bash
-# Token erzeugen (TTL frei wählbar) und an den Nutzer geben
-docker compose -f docker-compose.prod.yml exec app kilometrix token create --name philipp --days 90
-
-# ALLE Tokens widerrufen: AUTH_SECRET rotieren und App neu starten
-sed -i "s/^AUTH_SECRET=.*/AUTH_SECRET=$(openssl rand -hex 32)/" .env
-docker compose -f docker-compose.prod.yml up -d
-```
-
-Da die Tokens zustandslos sind, lässt sich ein **einzelnes** Token nicht gezielt widerrufen —
-entweder kurze TTL vergeben (läuft von selbst ab) oder mit `AUTH_SECRET` **alle** rotieren.
-Nach dem Rotieren bekommen alle Nutzer `401` → im Add-in erscheint wieder das Token-Gate.
-
-**Add-in verteilen:** `addin/manifest.server.xml` (zeigt auf die Domain) per M365-Admin-Center
-zentral ausrollen — dann erscheint Kilometrix bei den zugewiesenen Nutzern ohne Sideloading.
-
-> **Datenschutz-Hinweis:** Für den echten Firmen-Rollout sollte der Server **von der Firma
-> gehostet** sein (On-Prem/Firmen-Cloud), nicht im privaten Homelab — es laufen Firmen-Koordinaten
-> darüber. Das Homelab ist ideal fürs PoC.
+> **Datenschutz:** Für den echten Firmen-Rollout sollte der Server **von der Firma gehostet** sein
+> (es laufen Firmen-Koordinaten darüber). Das Homelab ist ideal fürs PoC.
 
 ## API (für eigene Skripte)
-
-Das Add-in spricht mit dem Backend über einen einzigen JSON-Endpoint, den du auch direkt
-aus eigenen Skripten nutzen kannst:
 
 ```
 POST /route-batch
@@ -225,18 +187,13 @@ POST /route-batch
 
 Jeder Endpunkt wird **entweder** über `*_lat/*_lon` **oder** über `*_lkz/*_plz` angegeben;
 LKZ/PLZ löst das Backend zum Zentroid auf (benötigt `data/plz_centroids.csv`, sonst `503`).
-Die Response gibt die verwendeten/hergeleiteten Koordinaten zurück; nicht auflösbare PLZ
-liefern Status `plz_not_found`.
-
-Synchron und parallel (8 Worker). Reihenfolge bleibt erhalten, `id` wird durchgereicht.
-Obergrenze: `MAX_SYNC_BATCH` (Default 20.000) pro Request — das Add-in chunkt automatisch
-darunter und kann so beliebig große Blätter verarbeiten.
-
-Bei `AUTH_ENABLED=true` (zentraler Betrieb) muss der Header `Authorization: Bearer <token>`
-mitgesendet werden (`GET /auth/check` validiert ein Token). Lokal ist Auth aus.
+Synchron und parallel (`WORKERS`, Default 8). Reihenfolge bleibt erhalten, `id` wird
+durchgereicht. Obergrenze `MAX_SYNC_BATCH` (Default 20.000) pro Request — das Add-in chunkt
+automatisch darunter. Bei `AUTH_ENABLED=true` muss `Authorization: Bearer <token>` mitgesendet
+werden (`GET /auth/check` validiert ein Token); lokal ist Auth aus.
 
 ## Tests
 
 ```bash
-pytest
+go test ./...
 ```
