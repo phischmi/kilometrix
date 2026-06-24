@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"time"
+	_ "time/tzdata" // Zoneinfo ins Binary einbetten (distroless hat keine) -> TZ=Europe/Berlin wirkt
 
 	"github.com/phischmi/kilometrix/internal/build"
 	"github.com/phischmi/kilometrix/internal/config"

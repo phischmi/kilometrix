@@ -23,6 +23,7 @@ services:
   app:
     build: .
     environment:
+      TZ: "Europe/Berlin"
       MANAGE_OSRM_ROUTED: "false"
       OSRM_ROUTED_URL: "http://osrm:5000"
       WORKERS: "8"

@@ -153,6 +153,19 @@ docker compose up -d --build
 docker compose exec app kilometrix token create --name philipp --days 90
 ```
 
+**Datei-Rechte im `./data`:** Der `app`-Container läuft non-root (distroless `:nonroot`,
+UID 65532) und mountet `./data` read-only. Die Dateien müssen daher für „others" lesbar sein,
+sonst meldet die App beim Start `Geocoder nicht geladen: ... permission denied`. `build-geocode`
+schreibt `plz_centroids.csv` bereits world-readable (`0644`); kopierst du Daten manuell aufs NAS
+oder läuft die umask restriktiv (`077`), einmalig nachziehen:
+
+```bash
+chmod o+rx data && chmod o+r data/plz_centroids.csv data/germany.osrm.*
+```
+
+**Zeitzone:** Die App loggt in `Europe/Berlin` (`TZ` in der Compose, Zoneinfo ist ins Binary
+eingebettet). Anpassen über die `TZ`-Variable im `app`-Service.
+
 **Token-Schutz:** `/route-batch` ist mit einem signierten Bearer-Token (HMAC, frei wählbare TTL,
 ohne DB) geschützt. Einzelne Tokens lassen sich nicht gezielt widerrufen — kurze TTL vergeben oder
 mit `AUTH_SECRET` **alle** rotieren (Secret neu setzen, App neu starten).

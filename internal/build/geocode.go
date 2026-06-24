@@ -170,7 +170,15 @@ func aggregateZip(zipPath, country, outPath string) (int, error) {
 		}
 	}
 	cw.Flush()
-	return len(groups), cw.Error()
+	if err := cw.Error(); err != nil {
+		return 0, err
+	}
+	// Explizit world-readable, unabhängig von der umask (NAS laufen oft mit umask 077,
+	// sonst kann der non-root App-Container die Datei nicht lesen -> permission denied).
+	if err := os.Chmod(outPath, 0o644); err != nil {
+		return 0, err
+	}
+	return len(groups), nil
 }
 
 func round6(v float64) float64 {

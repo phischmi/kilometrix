@@ -20,6 +20,7 @@ services:
     image: ${KILOMETRIX_IMAGE:-ghcr.io/phischmi/kilometrix:latest}
     pull_policy: always
     environment:
+      TZ: "Europe/Berlin"
       MANAGE_OSRM_ROUTED: "false"
       OSRM_ROUTED_URL: "http://osrm:5000"
       WORKERS: "8"
