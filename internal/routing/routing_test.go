@@ -2,8 +2,12 @@ package routing
 
 import "testing"
 
+// eng ist ein kleiner Helfer, der eine HTTPEngine mit gegebenem Snap-Limit baut.
 func eng(snap float64) *HTTPEngine { return NewHTTPEngine("http://x", snap) }
 
+// wp baut einen einzelnen Waypoint mit Snap-Distanz d. Der etwas sperrige
+// Rückgabetyp ist exakt der anonyme struct-Typ aus osrmResponse.Waypoints —
+// deshalb muss er hier wortwörtlich wiederholt werden.
 func wp(d float64) struct {
 	Distance *float64 `json:"distance"`
 } {
@@ -12,6 +16,8 @@ func wp(d float64) struct {
 	}{Distance: &d}
 }
 
+// Testet parse() direkt mit einer gefälschten OSRM-Antwort — ganz ohne echtes
+// HTTP. Genau dafür wurde parse als eigene Methode herausgezogen.
 func TestParseOK(t *testing.T) {
 	r := eng(50).parse(osrmResponse{
 		Code: "Ok",
@@ -26,11 +32,14 @@ func TestParseOK(t *testing.T) {
 	if r.Status != StatusOK {
 		t.Fatalf("status = %s", r.Status)
 	}
+	// *r.DistanceKm dereferenziert den Pointer: 12345 m -> 12.35 km, 678 s -> 11.3 min,
+	// größte Snap-Distanz = 12.
 	if *r.DistanceKm != 12.35 || *r.DurationMin != 11.3 || *r.SnapM != 12 {
 		t.Fatalf("km=%v min=%v snap=%v", *r.DistanceKm, *r.DurationMin, *r.SnapM)
 	}
 }
 
+// Snap-Distanz 120 > Limit 50 -> Status muss "snapped_far" sein.
 func TestParseSnappedFar(t *testing.T) {
 	r := eng(50).parse(osrmResponse{
 		Code: "Ok",
@@ -47,6 +56,7 @@ func TestParseSnappedFar(t *testing.T) {
 	}
 }
 
+// Code != "Ok" -> kein Ergebnis, DistanceKm bleibt nil.
 func TestParseNoRoute(t *testing.T) {
 	r := eng(50).parse(osrmResponse{Code: "NoRoute"})
 	if r.Status != StatusNoRoute || r.DistanceKm != nil {
@@ -54,6 +64,9 @@ func TestParseNoRoute(t *testing.T) {
 	}
 }
 
+// stubEngine ist eine FAKE-Engine für den Test: sie erfüllt das Engine-Interface
+// (hat eine Route-Methode), routet aber nicht wirklich, sondern zählt nur Aufrufe.
+// So lässt sich RoutePairs ohne osrm testen — der Vorteil von Interfaces.
 type stubEngine struct{ calls int }
 
 func (s *stubEngine) Route(o, d Coord) Result {
@@ -62,6 +75,8 @@ func (s *stubEngine) Route(o, d Coord) Result {
 	return Result{DistanceKm: &km, Status: StatusOK}
 }
 
+// Prüft, dass RoutePairs trotz paralleler Worker die Reihenfolge erhält und jeden
+// Job genau einmal verarbeitet.
 func TestRoutePairsPreservesOrder(t *testing.T) {
 	s := &stubEngine{}
 	pairs := []Pair{

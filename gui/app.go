@@ -15,20 +15,28 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
+	"runtime" // ACHTUNG: das Standard-runtime-Paket (GOOS etc.), nicht unser internal/runtime
 	"strings"
-	"sync"
+	"sync" // Mutex zum Schutz gemeinsamer Felder
 	"time"
 
+	// Import mit ALIAS: das wails-runtime-Paket bekommt den Namen `wruntime`, um
+	// nicht mit dem Standard-`runtime` oben zu kollidieren. Syntax: alias "pfad".
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // App ist der an das Frontend gebundene Zustand.
+//
+// Methoden auf *App, die exportiert sind (Großbuchstabe), ruft das TS/JS-Frontend
+// direkt auf — Wails generiert dafür JavaScript-Bindings.
 type App struct {
-	ctx     context.Context
-	bin     string
-	workDir string
+	ctx     context.Context // von Wails beim Start übergeben (für Events)
+	bin     string          // Pfad zum kilometrix-Binary
+	workDir string          // Arbeitsverzeichnis (mit data/ + profiles/)
 
+	// GO-EINSTEIGER: Ein Mutex ("mutual exclusion") schützt Felder, auf die
+	// MEHRERE Goroutinen zugreifen. Wer mu.Lock() hält, darf serve/busy ändern;
+	// alle anderen warten. Ohne das gäbe es "data races".
 	mu     sync.Mutex
 	serve  *exec.Cmd // laufender 'serve'-Prozess (oder nil)
 	busy   bool      // ein Build läuft
@@ -42,6 +50,8 @@ func NewApp() *App {
 		bin:     resolveBinary(workDir),
 		workDir: workDir,
 		// localhost-Selbstsignatur akzeptieren (nur für den /health-Poll der GUI).
+		// InsecureSkipVerify schaltet die Zertifikatsprüfung ab — hier vertretbar,
+		// weil es nur localhost ist; im echten Netz wäre das gefährlich.
 		client: &http.Client{
 			Timeout:   3 * time.Second,
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
@@ -49,6 +59,7 @@ func NewApp() *App {
 	}
 }
 
+// startup wird von Wails beim Start aufgerufen und hinterlegt den Context.
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
 
 // resolveBinary sucht das kilometrix-Binary: ENV → neben der GUI → Arbeitsverzeichnis → PATH.
@@ -57,10 +68,12 @@ func resolveBinary(workDir string) string {
 		return v
 	}
 	name := "kilometrix"
+	// runtime.GOOS ist eine Konstante mit dem Ziel-Betriebssystem ("windows", "darwin", ...).
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	candidates := []string{}
+	// os.Executable() liefert den Pfad zur laufenden GUI-Binary -> daneben suchen.
 	if exe, err := os.Executable(); err == nil {
 		candidates = append(candidates, filepath.Join(filepath.Dir(exe), name))
 	}
@@ -70,10 +83,11 @@ func resolveBinary(workDir string) string {
 			return abs
 		}
 	}
+	// Zuletzt im PATH suchen.
 	if p, err := exec.LookPath(name); err == nil {
 		return p
 	}
-	return name
+	return name // Fallback: einfach den Namen (Aufruf schlägt dann ggf. fehl)
 }
 
 // resolveWorkDir wählt das Projektverzeichnis (mit data/ + profiles/).
@@ -90,7 +104,7 @@ func resolveWorkDir() string {
 	return "."
 }
 
-// Env beschreibt die GUI-Umgebung fürs Frontend.
+// Env beschreibt die GUI-Umgebung fürs Frontend (wird als JSON gebunden).
 type Env struct {
 	Binary  string `json:"binary"`
 	WorkDir string `json:"workDir"`
@@ -105,6 +119,7 @@ func (a *App) GetEnv() Env {
 }
 
 // Config gibt die aufgelöste Backend-Konfiguration zurück (via 'kilometrix config').
+// Rückgabe (map, error) — die map wird im Frontend zu einem JS-Objekt.
 func (a *App) Config() (map[string]any, error) {
 	out, err := a.run("config")
 	if err != nil {
@@ -132,24 +147,26 @@ func (a *App) Health(port int) Health {
 	}
 	resp, err := a.client.Get(fmt.Sprintf("https://127.0.0.1:%d/health", port))
 	if err != nil {
-		return Health{}
+		return Health{} // Nullwert: alle Felder false -> "offline"
 	}
 	defer resp.Body.Close()
+	// Eine lokale, anonyme Struct nur zum Dekodieren der Antwortfelder.
 	var h struct {
 		EngineReady  bool `json:"engine_ready"`
 		GeocodeReady bool `json:"geocode_ready"`
 		AuthRequired bool `json:"auth_required"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&h) != nil {
-		return Health{Online: true}
+		return Health{Online: true} // erreichbar, aber Body unlesbar
 	}
 	return Health{Online: true, EngineReady: h.EngineReady, GeocodeReady: h.GeocodeReady, AuthRequired: h.AuthRequired}
 }
 
 // ServerRunning meldet, ob der serve-Prozess läuft.
+// Lock/Unlock schützen den Zugriff auf a.serve gegen parallele Goroutinen.
 func (a *App) ServerRunning() bool {
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	defer a.mu.Unlock() // defer entsperrt zuverlässig am Funktionsende
 	return a.serve != nil
 }
 
@@ -157,7 +174,7 @@ func (a *App) ServerRunning() bool {
 func (a *App) StartServer() error {
 	a.mu.Lock()
 	if a.serve != nil {
-		a.mu.Unlock()
+		a.mu.Unlock() // VOR dem return entsperren (kein defer, weil wir früh raus wollen)
 		return fmt.Errorf("Server läuft bereits")
 	}
 	cmd := a.command("serve")
@@ -170,21 +187,22 @@ func (a *App) StartServer() error {
 		a.mu.Unlock()
 		return err
 	}
+	// Eine Goroutine wartet im Hintergrund auf das Prozessende und räumt dann auf.
 	go func() {
-		_ = cmd.Wait()
+		_ = cmd.Wait() // blockiert, bis serve sich beendet
 		a.mu.Lock()
 		a.serve = nil
 		a.mu.Unlock()
-		a.emit("server:stopped", nil)
+		a.emit("server:stopped", nil) // Frontend benachrichtigen
 	}()
 	a.emit("server:started", nil)
 	return nil
 }
 
-// StopServer beendet den serve-Prozess.
+// StopServer beendet den serve-Prozess (höflich per SIGINT).
 func (a *App) StopServer() error {
 	a.mu.Lock()
-	cmd := a.serve
+	cmd := a.serve // unter Lock kopieren, dann sofort wieder freigeben
 	a.mu.Unlock()
 	if cmd == nil || cmd.Process == nil {
 		return nil
@@ -207,6 +225,7 @@ func (a *App) BuildGraph() error {
 	return a.runBuild([]string{"build-graph"})
 }
 
+// runBuild startet einen Build-Subcommand (nur einer gleichzeitig dank busy-Flag).
 func (a *App) runBuild(args []string) error {
 	a.mu.Lock()
 	if a.busy {
@@ -224,6 +243,7 @@ func (a *App) runBuild(args []string) error {
 	go func() {
 		err := cmd.Wait()
 		a.setBusy(false)
+		// Frontend über Erfolg/Fehler informieren (map -> JS-Objekt).
 		if err != nil {
 			a.emit("build:done", map[string]any{"ok": false, "error": err.Error()})
 		} else {
@@ -233,6 +253,7 @@ func (a *App) runBuild(args []string) error {
 	return nil
 }
 
+// setBusy ist ein kleiner thread-sicherer Setter für das busy-Flag.
 func (a *App) setBusy(b bool) {
 	a.mu.Lock()
 	a.busy = b
@@ -245,9 +266,10 @@ func (a *App) CreateToken(name string, days float64) (string, error) {
 		return "", fmt.Errorf("Name erforderlich")
 	}
 	cmd := a.command("token", "create", "--name", name, "--days", fmt.Sprintf("%g", days))
+	// stderr in einen Puffer umleiten, um eine evtl. Fehlermeldung lesbar zu machen.
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr // Fehlermeldung des Binaries (z. B. fehlendes AUTH_SECRET) erfassen
-	out, err := cmd.Output()
+	cmd.Stderr = &stderr // bytes.Buffer erfüllt io.Writer -> direkt zuweisbar
+	out, err := cmd.Output() // führt aus und gibt stdout zurück
 	if err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return "", fmt.Errorf("%s", msg)
@@ -262,7 +284,7 @@ func (a *App) CreateToken(name string, days float64) (string, error) {
 // command baut ein exec.Cmd im Arbeitsverzeichnis.
 func (a *App) command(args ...string) *exec.Cmd {
 	cmd := exec.Command(a.bin, args...)
-	cmd.Dir = a.workDir
+	cmd.Dir = a.workDir // Arbeitsverzeichnis des Kindprozesses setzen
 	return cmd
 }
 
@@ -273,32 +295,37 @@ func (a *App) run(args ...string) ([]byte, error) {
 
 // stream startet cmd und leitet stdout+stderr zeilenweise als Event an das Frontend.
 func (a *App) stream(cmd *exec.Cmd, event string) error {
+	// StdoutPipe liefert einen Reader, aus dem wir die Ausgabe des Prozesses lesen.
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
 	}
 	cmd.Stderr = cmd.Stdout // gemeinsamer Strom: stderr → stdout-Pipe
-	if err := cmd.Start(); err != nil {
+	if err := cmd.Start(); err != nil { // nicht-blockierend starten
 		return err
 	}
-	go a.pump(stdout, event)
+	go a.pump(stdout, event) // im Hintergrund die Ausgabe weiterpumpen
 	return nil
 }
 
+// pump liest r zeilenweise und schickt jede Zeile als Event ans Frontend.
 func (a *App) pump(r io.Reader, event string) {
 	sc := bufio.NewScanner(r)
+	// Größeren Puffer erlauben (bis 1 MB pro Zeile), falls eine Logzeile lang wird.
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
 		a.emit(event, sc.Text())
 	}
 }
 
+// emit schickt ein Wails-Event ans Frontend (nur, wenn der Context schon da ist).
 func (a *App) emit(event string, data any) {
 	if a.ctx != nil {
 		wruntime.EventsEmit(a.ctx, event, data)
 	}
 }
 
+// fileExists / dirExists: kleine os.Stat-Helfer.
 func fileExists(p string) bool {
 	st, err := os.Stat(p)
 	return err == nil && !st.IsDir()
