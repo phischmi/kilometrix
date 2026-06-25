@@ -1,0 +1,27 @@
+# Umgebung
+.env
+
+# OSRM-Graph (groß) + Laufzeit-Artefakte
+data/*.osrm*
+data/*.pbf
+# Geocoding-Tabelle (via 'kilometrix build-geocode' erzeugt)
+data/plz_centroids.csv
+
+# TLS-Zertifikate (lokal generiert)
+certs/
+
+# Go-Build-Artefakte
+/kilometrix
+/kilometrix.exe
+/dist/
+*.test
+
+# GUI-Build (Wails)
+gui/build/bin/
+gui/frontend/node_modules/
+
+# OS
+.DS_Store
+
+# Deploymentspezifisches Server-Manifest (Domain) — aus dem Template erzeugen
+addin/manifest.server.xml

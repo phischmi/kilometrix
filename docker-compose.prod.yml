@@ -1,0 +1,51 @@
+# Kilometrix — Prod-Variante: zieht das App-Image aus GHCR (von GitHub Actions gebaut),
+# baut also NICHTS auf dem NAS. Der Quellcode muss dafür nicht aufs NAS — nur diese Datei,
+# .env und der Graph (data/germany.osrm.*).
+#
+#   docker login ghcr.io -u phischmi          # einmalig (PAT mit read:packages)
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Traefik-Netz/certresolver wie in docker-compose.yml an deine Instanz anpassen.
+
+services:
+  osrm:
+    image: ${OSRM_IMAGE:-ghcr.io/project-osrm/osrm-backend:v26.6.5-debian}
+    command: ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "--mmap", "true", "/data/germany.osrm"]
+    volumes:
+      - ./data:/data:ro
+    restart: unless-stopped
+
+  app:
+    image: ${KILOMETRIX_IMAGE:-ghcr.io/phischmi/kilometrix:latest}
+    pull_policy: always
+    environment:
+      TZ: "Europe/Berlin"
+      MANAGE_OSRM_ROUTED: "false"
+      OSRM_ROUTED_URL: "http://osrm:5000"
+      WORKERS: "8"
+      SNAP_LIMIT_M: "100"
+      # Geocoding-Tabelle (LKZ/PLZ -> Zentroid) aus dem gemounteten data-Verzeichnis.
+      GEOCODE_PATH: "/data/plz_centroids.csv"
+      AUTH_ENABLED: "true"
+      AUTH_SECRET: "${AUTH_SECRET:?AUTH_SECRET muss in .env gesetzt sein}"
+    volumes:
+      # Der Geocoder laeuft im app-Container und braucht Zugriff auf plz_centroids.csv.
+      - ./data:/data:ro
+    depends_on:
+      - osrm
+    restart: unless-stopped
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.kilometrix.rule=Host(`${KILOMETRIX_HOST:-kilometrix.example.com}`)"
+      - "traefik.http.routers.kilometrix.entrypoints=websecure"
+      - "traefik.http.routers.kilometrix.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kilometrix.loadbalancer.server.port=8000"
+
+networks:
+  traefik:
+    external: true

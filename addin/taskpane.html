@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kilometrix</title>
+  <link rel="icon" href="assets/icon-32.png" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+</head>
+<body>
+  <!-- Hinweis, wenn die Seite außerhalb von Excel (z. B. direkt im Browser) geöffnet wird.
+       app.js blendet stattdessen das Add-in ein, sobald Office Excel als Host bestätigt. -->
+  <div class="notexcel" id="notExcel" hidden>
+    <img class="notexcel__logo" src="assets/icon-64.png" alt="" />
+    <div class="notexcel__title">Nur in Microsoft Excel nutzbar</div>
+    <p class="notexcel__text">
+      Kilometrix ist ein Excel-Add-in und hat außerhalb von Excel keine Funktion.
+      Bitte über „Start → Add-ins" direkt in Microsoft Excel öffnen.
+    </p>
+  </div>
+
+  <div class="app" id="appRoot" hidden>
+    <header class="hdr">
+      <img class="hdr__logo" src="assets/icon-64.png" alt="" />
+      <div>
+        <div class="hdr__title">Kilometrix</div>
+        <div class="hdr__sub">Straßen-Kilometer · LKW</div>
+      </div>
+      <span class="status status--off" id="status">
+        <span class="status__dot"></span><span id="statusText">verbinde …</span>
+      </span>
+      <button class="iconbtn" id="settingsBtn" title="Einstellungen" aria-label="Einstellungen" hidden>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" stroke-width="1.6"/><path d="M19.4 13a7.8 7.8 0 0 0 0-2l2-1.5-2-3.4-2.3 1a7.6 7.6 0 0 0-1.7-1l-.4-2.6h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.3-1-2 3.4L4.6 11a7.8 7.8 0 0 0 0 2l-2 1.5 2 3.4 2.3-1c.5.4 1.1.7 1.7 1l.4 2.6h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.3 1 2-3.4-2-1.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </button>
+    </header>
+
+    <main class="body">
+      <!-- Token-Gate (nur bei geschütztem Server sichtbar) -->
+      <section class="block gate" id="gate" hidden>
+        <div class="label">Zugang</div>
+        <p class="gate__hint">Dieser Server ist tokengeschützt. Bitte dein Zugangstoken einfügen.</p>
+        <input class="token-input" id="tokenInput" type="password" placeholder="Token einfügen" autocomplete="off" spellcheck="false" />
+        <button class="run" id="tokenSave">Verbinden</button>
+        <div class="alert" id="gateAlert">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span id="gateAlertText"></span>
+        </div>
+      </section>
+
+      <!-- Einstellungen (Zahnrad) -->
+      <section class="block settings" id="settings" hidden>
+        <div class="label">Einstellungen</div>
+
+        <div class="set-group">
+          <div class="set-title">Ausgabespalten</div>
+          <label class="check"><input type="checkbox" id="col_distance" checked /><span>Distanz (km)</span></label>
+          <label class="check"><input type="checkbox" id="col_duration" checked /><span>Fahrzeit</span></label>
+          <label class="check"><input type="checkbox" id="col_status" checked /><span>Status</span></label>
+          <label class="check"><input type="checkbox" id="col_snap" /><span>Snap-Distanz (m)</span></label>
+        </div>
+
+        <div class="set-group">
+          <div class="set-title">Fahrzeit-Format</div>
+          <div class="seg" role="group" aria-label="Fahrzeit-Format">
+            <button id="durMin" aria-pressed="true">Minuten</button>
+            <button id="durHhmm" aria-pressed="false">hh:mm</button>
+          </div>
+        </div>
+
+        <button class="run" id="settingsDone">Fertig</button>
+      </section>
+
+      <div id="main">
+        <!-- Bereich -->
+        <section class="block">
+          <div class="label">Bereich <span class="label__x" id="rangeAddr">—</span></div>
+          <div class="seg" role="group" aria-label="Bereich">
+            <button id="segUsed" aria-pressed="true">Ganzes Blatt</button>
+            <button id="segSel" aria-pressed="false">Markierung</button>
+          </div>
+          <div class="meta"><b id="rowCount">0</b><span>Datenzeilen</span></div>
+          <label class="check">
+            <input type="checkbox" id="hasHeader" checked />
+            <span>Erste Zeile ist Überschrift</span>
+          </label>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Modus -->
+        <section class="block">
+          <div class="label">Modus</div>
+          <div class="seg" role="group" aria-label="Modus">
+            <button id="modeRoute" aria-pressed="false">Nur Routing</button>
+            <button id="modeGeo" aria-pressed="true">Geocoding + Routing</button>
+          </div>
+          <p class="mode-hint" id="modeHint">
+            Koordinaten werden aus LKZ/PLZ (Zentroid) hergeleitet und ins Blatt geschrieben.
+          </p>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Spalten -->
+        <section class="block">
+          <div class="label">Spalten zuordnen</div>
+          <!-- Modus „Nur Routing": Koordinaten -->
+          <div class="grid" id="grid_coords" hidden>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · Breite</span>
+              <select id="origin_lat"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · Länge</span>
+              <select id="origin_lon"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · Breite</span>
+              <select id="dest_lat"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · Länge</span>
+              <select id="dest_lon"></select>
+            </div>
+          </div>
+          <!-- Modus „Geocoding + Routing": LKZ + PLZ -->
+          <div class="grid" id="grid_plz">
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · LKZ</span>
+              <select id="origin_lkz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--o"></span>Start · PLZ</span>
+              <select id="origin_plz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · LKZ</span>
+              <select id="dest_lkz"></select>
+            </div>
+            <div class="field">
+              <span class="field__label"><span class="pin pin--d"></span>Ziel · PLZ</span>
+              <select id="dest_plz"></select>
+            </div>
+          </div>
+        </section>
+
+        <div class="divider"></div>
+
+        <!-- Aktion -->
+        <section class="block">
+          <button class="run" id="runBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" id="runIcon">
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span id="runLabel">Strecken berechnen</span>
+          </button>
+
+          <div class="progress" id="progress">
+            <div class="progress__bar"><div class="progress__fill" id="progFill"></div></div>
+            <div class="progress__txt"><span id="progLabel">Berechne …</span><span id="progPct">0 %</span></div>
+          </div>
+
+          <div class="alert" id="alert">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span id="alertText"></span>
+          </div>
+        </section>
+
+        <!-- Ergebnis -->
+        <section class="results" id="results">
+          <div class="label">Ergebnis <span class="label__x" id="elapsed">—</span></div>
+          <div class="stats">
+            <div class="stat"><span class="stat__val" id="rTotal">0</span><span class="stat__lbl">Strecken</span></div>
+            <div class="stat stat--ok"><span class="stat__val" id="rOk">0</span><span class="stat__lbl">OK</span></div>
+            <div class="stat stat--far"><span class="stat__val" id="rFar">0</span><span class="stat__lbl">Snap</span></div>
+            <div class="stat stat--bad"><span class="stat__val" id="rBad">0</span><span class="stat__lbl">o. Route</span></div>
+          </div>
+          <div class="results__foot">
+            <svg class="tick" width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span><b id="writtenCols">4 Spalten</b> ins Blatt geschrieben</span>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="foot">
+      <span>OSRM · MLD · LKW<span id="appVersion"></span></span>
+      <span id="backendUrl"></span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
