@@ -8,7 +8,6 @@ name: Build binaries (Backend + Wails-GUI)
 on:
   push:
     tags: ["v*"]
-    branches: ["claude/cool-noether-qae0us"]   # TEMPORÄR: nur zum Testen des Workflows
   workflow_dispatch:
 
 permissions:
