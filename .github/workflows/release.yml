@@ -1,0 +1,111 @@
+name: Build binaries (Backend + Wails-GUI)
+
+# Baut das Go-Backend (Cross-Compile, reine stdlib) und die Wails-GUI.
+# Die GUI MUSS auf einem nativen Windows-Runner gebaut werden — Wails
+# unterstützt kein Cross-Compiling (WebView2-Bindings sind Windows-nativ).
+# Bei Tag (v*) werden alle Artefakte an ein GitHub-Release gehängt.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # für das Erstellen/Befüllen des Release
+
+env:
+  GO_VERSION: "1.23"
+  WAILS_VERSION: "v2.12.0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: Cross-Compile vom Linux-Runner für alle Zielplattformen.
+  # Kein cgo (CGO_ENABLED=0) → reiner Go-Cross-Compile, kein Windows/macOS nötig.
+  # ---------------------------------------------------------------------------
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+          - { goos: darwin,  goarch: arm64, ext: "" }
+          - { goos: darwin,  goarch: amd64, ext: "" }
+          - { goos: linux,   goarch: amd64, ext: "" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          out="kilometrix-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}"
+          go build -ldflags="-s -w" -o "$out" ./cmd/kilometrix
+          echo "ARTIFACT=$out" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kilometrix-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.ARTIFACT }}
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Wails-GUI: nativer Windows-Build (kein Cross-Compile möglich).
+  # ---------------------------------------------------------------------------
+  gui-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: gui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+
+      - name: Build GUI (windows/amd64)
+        # -nsis erzeugt zusätzlich einen Installer (NSIS ist auf windows-latest vorhanden).
+        # Wails legt das Ergebnis unter gui/build/bin ab.
+        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kilometrix-gui-windows-amd64
+          path: |
+            gui/build/bin/*.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Release: nur bei Tags v* — sammelt alle Artefakte und hängt sie an.
+  # ---------------------------------------------------------------------------
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [backend, gui-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
