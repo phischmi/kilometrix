@@ -3,6 +3,7 @@ package osrm
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec" // externe Programme starten (wie Pythons subprocess)
@@ -67,10 +68,9 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 		"--port", strconv.Itoa(p.Port), // Itoa = int to ASCII (Zahl -> String)
 	}
 	if p.Mmap {
-		// `append` hängt an ein Slice an und gibt das (ggf. neue) Slice zurück;
-		// das Ergebnis MUSS man wieder zuweisen. Mehrere Werte auf einmal möglich.
-		// explizit "--mmap true": ohne Wert würde der Graph-Pfad als Flag-Wert gelesen.
-		args = append(args, "--mmap", "true")
+		// --mmap ist ein bool-Switch in OSRM (Boost.Program_options bool_switch),
+		// der keinen separaten Wert erwartet — nur das Flag selbst reicht.
+		args = append(args, "--mmap")
 	}
 	args = append(args, p.GraphPath) // Basis-Pfad bleibt letztes Argument
 
@@ -100,6 +100,9 @@ func (p *Process) waitReady(timeout time.Duration) error {
 	defer timer.Stop()
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
+	start := time.Now()
 
 	for {
 		select {
@@ -117,13 +120,17 @@ func (p *Process) waitReady(timeout time.Duration) error {
 			return fmt.Errorf("osrm-routed beendete sich beim Start (Exit-Code %d)", code)
 		case <-timer.C:
 			_ = p.cmd.Process.Kill()
+			<-p.waitCh
 			return fmt.Errorf("osrm-routed wurde nicht innerhalb von %s bereit", timeout)
+		case <-heartbeat.C:
+			log.Printf("osrm-routed lädt noch… (%.0f s vergangen, warte bis %.0f s)", time.Since(start).Seconds(), timeout.Seconds())
 		case <-tick.C:
 			resp, err := client.Get(probe)
 			if err == nil {
 				resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
-					return nil // bereit; Wait()-Goroutine läuft bis Stop()
+					log.Printf("osrm-routed bereit (%.0f s)", time.Since(start).Seconds())
+					return nil
 				}
 			}
 		}
