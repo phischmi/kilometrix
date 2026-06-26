@@ -68,9 +68,7 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 		"--port", strconv.Itoa(p.Port), // Itoa = int to ASCII (Zahl -> String)
 	}
 	if p.Mmap {
-		// --mmap ist ein bool-Switch in OSRM (Boost.Program_options bool_switch),
-		// der keinen separaten Wert erwartet — nur das Flag selbst reicht.
-		args = append(args, "--mmap")
+		args = append(args, "--mmap", "true")
 	}
 	args = append(args, p.GraphPath) // Basis-Pfad bleibt letztes Argument
 
