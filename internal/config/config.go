@@ -22,13 +22,14 @@ type Settings struct {
 	OSRMAlgorithm string
 
 	// osrm-routed als lokaler Subprozess
-	OSRMRoutedBin       string
-	OSRMRoutedHost      string
-	OSRMRoutedPort      int
-	ManageOSRMRouted    bool
-	OSRMRoutedURL       string // expliziter Override; sonst host:port
-	OSRMRoutedVerbosity string
-	OSRMRoutedMmap      bool
+	OSRMRoutedBin          string
+	OSRMRoutedHost         string
+	OSRMRoutedPort         int
+	ManageOSRMRouted       bool
+	OSRMRoutedURL          string // expliziter Override; sonst host:port
+	OSRMRoutedVerbosity    string
+	OSRMRoutedMmap         bool
+	OSRMRoutedReadyTimeout int // Sekunden; 0 = Default (300)
 
 	// Geocoding (LKZ/PLZ → Zentroid)
 	GeocodePath string
@@ -75,13 +76,14 @@ func Load() Settings {
 	return Settings{
 		OSRMGraphPath:       getStr("OSRM_GRAPH_PATH", "data/germany.osrm"),
 		OSRMAlgorithm:       getStr("OSRM_ALGORITHM", "MLD"),
-		OSRMRoutedBin:       getStr("OSRM_ROUTED_BIN", "osrm-routed"),
-		OSRMRoutedHost:      getStr("OSRM_ROUTED_HOST", "127.0.0.1"),
-		OSRMRoutedPort:      getInt("OSRM_ROUTED_PORT", 5001),
-		ManageOSRMRouted:    getBool("MANAGE_OSRM_ROUTED", true),
-		OSRMRoutedURL:       getStr("OSRM_ROUTED_URL", ""),
-		OSRMRoutedVerbosity: getStr("OSRM_ROUTED_VERBOSITY", "WARNING"),
-		OSRMRoutedMmap:      getBool("OSRM_ROUTED_MMAP", true),
+		OSRMRoutedBin:          getStr("OSRM_ROUTED_BIN", "osrm-routed"),
+		OSRMRoutedHost:         getStr("OSRM_ROUTED_HOST", "127.0.0.1"),
+		OSRMRoutedPort:         getInt("OSRM_ROUTED_PORT", 5001),
+		ManageOSRMRouted:       getBool("MANAGE_OSRM_ROUTED", true),
+		OSRMRoutedURL:          getStr("OSRM_ROUTED_URL", ""),
+		OSRMRoutedVerbosity:    getStr("OSRM_ROUTED_VERBOSITY", "WARNING"),
+		OSRMRoutedMmap:         getBool("OSRM_ROUTED_MMAP", true),
+		OSRMRoutedReadyTimeout: getInt("OSRM_ROUTED_READY_TIMEOUT", 0),
 		GeocodePath:         getStr("GEOCODE_PATH", "data/plz_centroids.csv"),
 		Workers:             getInt("WORKERS", 8),
 		SnapLimitM:          getFloat("SNAP_LIMIT_M", 100.0),

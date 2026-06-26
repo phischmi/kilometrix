@@ -61,8 +61,12 @@ func Serve(opt ServeOptions) error {
 			Verbosity: settings.OSRMRoutedVerbosity,
 			Mmap:      settings.OSRMRoutedMmap,
 		}
-		log.Printf("starte osrm-routed (%s)…", settings.OSRMGraphPath)
-		if err := proc.Start(60 * time.Second); err != nil {
+		readyTimeout := time.Duration(settings.OSRMRoutedReadyTimeout) * time.Second
+		if readyTimeout <= 0 {
+			readyTimeout = 5 * time.Minute
+		}
+		log.Printf("starte osrm-routed (%s), Timeout %s…", settings.OSRMGraphPath, readyTimeout)
+		if err := proc.Start(readyTimeout); err != nil {
 			// Start fehlgeschlagen: Fehler merken, aber Backend trotzdem starten
 			// (es meldet dann bei /route-batch 503 statt komplett abzustürzen).
 			engineErr = err.Error()
