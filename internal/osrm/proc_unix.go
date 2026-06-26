@@ -7,8 +7,6 @@ import (
 	"os/exec"
 )
 
-func setProcAttr(cmd *exec.Cmd) {}
-
 func sendStop(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return nil
