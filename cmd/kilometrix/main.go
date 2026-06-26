@@ -51,6 +51,9 @@ func main() {
 	}
 	// `switch` ist wie in Python match/case, aber ohne automatisches Durchfallen:
 	// nach einem passenden `case` ist Schluss (kein `break` nötig).
+	// .env einmalig laden, damit HTTPS_PROXY u. a. für alle Subcommands verfügbar sind.
+	config.Load()
+
 	switch os.Args[1] {
 	case "serve":
 		cmdServe(os.Args[2:]) // os.Args[2:] = alle Argumente ab Index 2 (Slice-Ausschnitt)
