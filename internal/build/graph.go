@@ -111,9 +111,20 @@ func BuildGraph(opt GraphOptions, log func(string)) error {
 func stageProfile(profilePath string, log func(string)) (string, error) {
 	carLua, err := locateCarLua()
 	if err != nil {
-		// Kein car.lua gefunden → Profil direkt verwenden (funktioniert, wenn lib/ daneben liegt).
-		logf(log, "Hinweis: car.lua nicht gefunden, nutze Profil direkt: %s", profilePath)
-		return profilePath, nil
+		// Kein car.lua gefunden (typisch auf Windows: Release enthält keine Lua-Profile).
+		// Prüfen ob lib/ neben dem Profil liegt — dann funktioniert truck.lua direkt.
+		libDir := filepath.Join(filepath.Dir(profilePath), "lib")
+		if _, statErr := os.Stat(libDir); statErr == nil {
+			logf(log, "Hinweis: car.lua nicht gefunden, nutze Profil direkt (lib/ vorhanden): %s", profilePath)
+			return profilePath, nil
+		}
+		return "", fmt.Errorf(
+			"OSRM-Lua-Bibliothek nicht gefunden.\n" +
+				"Windows: Lade den OSRM-Quellcode der passenden Version herunter und kopiere\n" +
+				"den Ordner profiles/lib/ in das Verzeichnis %s/lib/\n" +
+				"Quelle: https://github.com/Project-OSRM/osrm-backend/tree/master/profiles/lib",
+			filepath.Dir(profilePath),
+		)
 	}
 	dstDir := filepath.Dir(carLua)                           // Verzeichnis von car.lua
 	dst := filepath.Join(dstDir, filepath.Base(profilePath)) // Zielpfad = dortiges Verzeichnis + Dateiname
