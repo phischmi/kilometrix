@@ -148,6 +148,8 @@ func cmdBuildGeocode(args []string) {
 	out := fs.String("out", "data/plz_centroids.csv", "Ziel-CSV")
 	_ = fs.Parse(args)
 
+	logEnvDiag(stdoutLog)
+
 	err := build.BuildGeocode(build.GeocodeOptions{
 		Country: *country, ZipURL: *zipURL, OutPath: *out,
 	}, stdoutLog)
@@ -236,6 +238,22 @@ func cmdConfig(args []string) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(out)
+}
+
+// logEnvDiag gibt .env-Status und aktive Proxy-Konfiguration aus.
+func logEnvDiag(log func(string)) {
+	if _, err := os.Stat(".env"); err == nil {
+		log(".env gefunden und geladen")
+	} else {
+		log("WARN: .env nicht gefunden — Proxy/Pfade nur aus Umgebungsvariablen")
+	}
+	if p := os.Getenv("HTTPS_PROXY"); p != "" {
+		log("HTTPS_PROXY=" + p)
+	} else if p := os.Getenv("HTTP_PROXY"); p != "" {
+		log("HTTP_PROXY=" + p)
+	} else {
+		log("Kein Proxy konfiguriert (HTTPS_PROXY/HTTP_PROXY nicht gesetzt)")
+	}
 }
 
 // stdoutLog ist eine winzige Funktion, die wir als Callback weiterreichen
