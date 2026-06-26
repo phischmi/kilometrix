@@ -199,16 +199,15 @@ func (a *App) StartServer() error {
 	return nil
 }
 
-// StopServer beendet den serve-Prozess (höflich per SIGINT).
+// StopServer beendet den serve-Prozess.
 func (a *App) StopServer() error {
 	a.mu.Lock()
 	cmd := a.serve // unter Lock kopieren, dann sofort wieder freigeben
 	a.mu.Unlock()
-	if cmd == nil || cmd.Process == nil {
+	if cmd == nil {
 		return nil
 	}
-	_ = cmd.Process.Signal(os.Interrupt)
-	return nil
+	return sendStop(cmd) // SIGINT (Unix) oder taskkill /T (Windows)
 }
 
 // BuildGeocode startet 'build-geocode' und streamt Logs als "build:log".
@@ -285,6 +284,7 @@ func (a *App) CreateToken(name string, days float64) (string, error) {
 func (a *App) command(args ...string) *exec.Cmd {
 	cmd := exec.Command(a.bin, args...)
 	cmd.Dir = a.workDir // Arbeitsverzeichnis des Kindprozesses setzen
+	setProcAttr(cmd)    // Windows: kein sichtbares Konsolenfenster
 	return cmd
 }
 
