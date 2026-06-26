@@ -26,7 +26,8 @@ type Process struct {
 	Verbosity string
 	Mmap      bool
 
-	cmd *exec.Cmd // Pointer auf das laufende Kommando; nil = läuft (noch) nicht
+	cmd    *exec.Cmd    // Pointer auf das laufende Kommando; nil = läuft (noch) nicht
+	waitCh chan error    // empfängt das Ergebnis von cmd.Wait(); gepuffert (Kapazität 1)
 }
 
 // BaseURL ist die HTTP-Basis-URL des Prozesses.
@@ -84,57 +85,64 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("osrm-routed konnte nicht gestartet werden: %w", err)
 	}
+	// Wait() genau einmal starten; Channel gepuffert, damit die Goroutine nicht
+	// blockiert wenn niemand liest (z. B. nach erfolgreichem Start).
+	p.waitCh = make(chan error, 1)
+	go func() { p.waitCh <- p.cmd.Wait() }()
 	return p.waitReady(readyTimeout)
 }
 
 // waitReady pollt den HTTP-Endpunkt, bis osrm-routed antwortet oder das Timeout greift.
 func (p *Process) waitReady(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout) // Zeitpunkt, ab dem wir aufgeben
-	// Eine triviale Test-Route (gleicher Punkt zweimal) als Lebenszeichen.
 	probe := p.BaseURL() + "/route/v1/driving/13.4,52.5;13.4,52.5?overview=false"
 	client := &http.Client{Timeout: 2 * time.Second}
-	for time.Now().Before(deadline) {
-		// Hat sich der Prozess schon wieder beendet? Dann hat der Start versagt.
-		if p.exited() {
-			return fmt.Errorf("osrm-routed beendete sich beim Start (Exit-Code %d)", p.cmd.ProcessState.ExitCode())
-		}
-		if resp, err := client.Get(probe); err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil // bereit!
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	tick := time.NewTicker(500 * time.Millisecond)
+	defer tick.Stop()
+
+	for {
+		select {
+		case err := <-p.waitCh:
+			// Prozess hat sich beendet bevor er bereit war — Fehler sofort melden.
+			code := -1
+			if p.cmd.ProcessState != nil {
+				code = p.cmd.ProcessState.ExitCode()
+			}
+			// waitCh wieder befüllen, damit Stop() ihn lesen kann (gepuffert → kein Deadlock).
+			p.waitCh <- err
+			if err != nil {
+				return fmt.Errorf("osrm-routed beendete sich beim Start (Exit-Code %d): %w", code, err)
+			}
+			return fmt.Errorf("osrm-routed beendete sich beim Start (Exit-Code %d)", code)
+		case <-timer.C:
+			_ = p.cmd.Process.Kill()
+			return fmt.Errorf("osrm-routed wurde nicht innerhalb von %s bereit", timeout)
+		case <-tick.C:
+			resp, err := client.Get(probe)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return nil // bereit; Wait()-Goroutine läuft bis Stop()
+				}
 			}
 		}
-		time.Sleep(500 * time.Millisecond) // kurz warten, dann erneut versuchen
 	}
-	_ = p.Stop() // Timeout: aufräumen
-	return fmt.Errorf("osrm-routed wurde nicht innerhalb von %s bereit", timeout)
 }
 
-// exited meldet, ob der Prozess bereits beendet ist. ProcessState ist erst nach
-// Wait() bzw. nach Prozessende gesetzt — daher die nil-Prüfungen.
-func (p *Process) exited() bool {
-	return p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited()
-}
-
-// Stop beendet den Prozess (SIGTERM, dann Kill).
+// Stop beendet den Prozess (SIGTERM/Kill) und wartet auf sein Ende.
 func (p *Process) Stop() error {
 	if p.cmd == nil || p.cmd.Process == nil {
-		return nil // nichts zu tun
+		return nil
 	}
 	_ = sendStop(p.cmd) // SIGINT (Unix) oder Kill (Windows)
-	// Wait() blockiert bis zum Prozessende. Wir lagern es in eine Goroutine aus
-	// und melden das Ergebnis über einen gepufferten Channel (Kapazität 1).
-	done := make(chan error, 1)
-	go func() { done <- p.cmd.Wait() }()
-	// `select` wartet auf MEHRERE Channel-Ereignisse gleichzeitig und nimmt das
-	// erste, das eintritt (wie ein "switch" für Channels).
+	// waitCh wurde in Start() gestartet — darüber auf das Prozessende warten,
+	// kein zweites Wait() starten (das wäre ein Fehler).
 	select {
-	case <-done:
-		// Prozess hat sich brav beendet. (Wert aus dem Channel verwerfen.)
+	case <-p.waitCh:
 	case <-time.After(10 * time.Second):
-		// Nach 10s immer noch da -> hart killen und dann auf done warten.
 		_ = p.cmd.Process.Kill()
-		<-done
+		<-p.waitCh
 	}
 	p.cmd = nil
 	return nil
