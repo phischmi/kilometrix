@@ -80,6 +80,7 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 	binutil.HideWindow(p.cmd) // Windows: kein sichtbares Konsolenfenster
 	// Start() startet den Prozess und kehrt sofort zurück (nicht-blockierend),
 	// anders als Run(), das auf das Ende warten würde.
+	log.Printf("osrm-routed Befehl: %s", p.cmd.String())
 	if err := p.cmd.Start(); err != nil {
 		return fmt.Errorf("osrm-routed konnte nicht gestartet werden: %w", err)
 	}
