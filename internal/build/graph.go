@@ -130,17 +130,25 @@ func locateCarLua() (string, error) {
 	if bin == "" {
 		return "", fmt.Errorf("osrm-extract nicht gefunden")
 	}
-	// EvalSymlinks folgt symbolischen Links (brew installiert oft per Symlink),
-	// damit wir den ECHTEN Installationsort finden.
 	resolved, err := filepath.EvalSymlinks(bin)
 	if err != nil {
 		resolved = bin
 	}
-	candidate := filepath.Join(filepath.Dir(resolved), "..", "share", "osrm", "profiles", "car.lua")
-	if _, err := os.Stat(candidate); err != nil {
-		return "", err
+	binDir := filepath.Dir(resolved)
+	// Mögliche Speicherorte von car.lua je nach Plattform/Installationsart:
+	//   macOS/Linux (brew):  <bin>/../share/osrm/profiles/car.lua
+	//   Windows Release:     <bin>/profiles/car.lua
+	candidates := []string{
+		filepath.Join(binDir, "..", "share", "osrm", "profiles", "car.lua"),
+		filepath.Join(binDir, "profiles", "car.lua"),
 	}
-	return filepath.Clean(candidate), nil // ".."-Teile auflösen/normalisieren
+	for _, c := range candidates {
+		clean := filepath.Clean(c)
+		if _, err := os.Stat(clean); err == nil {
+			return clean, nil
+		}
+	}
+	return "", fmt.Errorf("car.lua nicht gefunden (weder in ../share/osrm/profiles/ noch in profiles/ neben osrm-extract)")
 }
 
 // copyFile kopiert eine Datei. Schönes Beispiel für defer + io.Copy.
