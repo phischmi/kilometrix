@@ -3,9 +3,7 @@ name: Build & Push Docker image
 on:
   push:
     branches: [main]
-    # Nur bauen, wenn das Backend-Image tatsächlich betroffen ist
-    # (Dockerfile + alles, was hineinkopiert wird). Reine GUI-/Docs-
-    # Änderungen lösen keinen Image-Build mehr aus.
+    # Nur bauen, wenn das Backend-Image tatsächlich betroffen ist.
     paths:
       - "Dockerfile"
       - "go.mod"
@@ -13,6 +11,8 @@ on:
       - "internal/**"
       - "addin/**"
       - ".github/workflows/docker.yml"
+    tags:
+      - "v*"
   workflow_dispatch:
 
 env:
@@ -43,17 +43,31 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
+            # latest bei jedem Merge auf main
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+            # Semver-Tags bei v*-Releases: v2.0.1 → 2.0.1 + 2.0 + 2
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build & push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          # NAS ist amd64; bei ARM-NAS hier linux/amd64,linux/arm64 setzen (braucht QEMU-Step).
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Alte Image-Versionen aufräumen
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: kilometrix
+          package-type: container
+          # Die 3 neuesten Versionen behalten (latest + 2 ältere als Fallback).
+          min-versions-to-keep: 3
+          # Auch sha-* und andere benannte Tags löschen, nicht nur Untagged.
+          delete-only-untagged-versions: false
+          # Versionen mit diesen Tags NIE löschen.
+          ignore-versions: "^(latest|\\d+\\.\\d+\\.\\d+|\\d+\\.\\d+)$"
