@@ -94,7 +94,7 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 // waitReady pollt den HTTP-Endpunkt, bis osrm-routed antwortet oder das Timeout greift.
 func (p *Process) waitReady(timeout time.Duration) error {
 	probe := p.BaseURL() + "/route/v1/driving/13.4,52.5;13.4,52.5?overview=false"
-	client := &http.Client{Timeout: 2 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	tick := time.NewTicker(500 * time.Millisecond)
@@ -127,10 +127,10 @@ func (p *Process) waitReady(timeout time.Duration) error {
 			resp, err := client.Get(probe)
 			if err == nil {
 				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					log.Printf("osrm-routed bereit (%.0f s)", time.Since(start).Seconds())
-					return nil
-				}
+				// Jede HTTP-Antwort bedeutet: Server läuft. NoSegment (400) ist ok —
+				// Testkoordinaten schnappen nicht zwingend auf den LKW-Graph.
+				log.Printf("osrm-routed bereit (%.0f s)", time.Since(start).Seconds())
+				return nil
 			}
 		}
 	}
