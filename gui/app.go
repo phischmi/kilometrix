@@ -62,6 +62,26 @@ func NewApp() *App {
 // startup wird von Wails beim Start aufgerufen und hinterlegt den Context.
 func (a *App) startup(ctx context.Context) { a.ctx = ctx }
 
+// shutdown wird von Wails beim Schließen aufgerufen und beendet laufende Kindprozesse.
+func (a *App) shutdown(ctx context.Context) {
+	a.mu.Lock()
+	cmd := a.serve
+	a.mu.Unlock()
+	if cmd == nil {
+		return
+	}
+	_ = sendStop(cmd)
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}
+}
+
 // resolveBinary sucht das kilometrix-Binary: ENV → neben der GUI → Arbeitsverzeichnis → PATH.
 func resolveBinary(workDir string) string {
 	if v := os.Getenv("KILOMETRIX_BIN"); v != "" {
