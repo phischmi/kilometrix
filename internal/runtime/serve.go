@@ -55,7 +55,7 @@ func Serve(opt ServeOptions) error {
 		proc = &osrm.Process{
 			Binary:    settings.OSRMRoutedBin,
 			GraphPath: settings.OSRMGraphPath,
-			Algorithm: lower(settings.OSRMAlgorithm),
+			Algorithm: settings.OSRMAlgorithm,
 			Host:      settings.OSRMRoutedHost,
 			Port:      settings.OSRMRoutedPort,
 			Verbosity: settings.OSRMRoutedVerbosity,
@@ -155,14 +155,3 @@ func stop(httpSrv *http.Server, proc *osrm.Process) {
 	}
 }
 
-// lower wandelt ASCII-Großbuchstaben in Kleinbuchstaben (genügt für "MLD"->"mld").
-// (Hätte man auch mit strings.ToLower lösen können; hier bewusst minimal gehalten.)
-func lower(s string) string {
-	b := []byte(s) // String in veränderbares Byte-Slice kopieren
-	for i, c := range b {
-		if c >= 'A' && c <= 'Z' {
-			b[i] = c + 32 // 'A'(65) + 32 = 'a'(97): ASCII-Trick
-		}
-	}
-	return string(b) // zurück in einen String
-}
