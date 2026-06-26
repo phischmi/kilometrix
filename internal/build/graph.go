@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/phischmi/kilometrix/internal/binutil"
 )
 
 // GraphOptions steuert den OSRM-Graph-Bau (MLD-Pipeline).
@@ -40,12 +42,14 @@ func BuildGraph(opt GraphOptions, log func(string)) error {
 		opt.Output = os.Stderr
 	}
 
-	// Vorab prüfen, ob alle drei Tools im PATH sind — sonst gleich eine klare
-	// Fehlermeldung statt eines kryptischen Abbruchs mittendrin.
+	// Vorab alle drei Tools auflösen (PATH + neben eigenem Executable + .exe auf Windows).
+	resolved := map[string]string{}
 	for _, bin := range []string{"osrm-extract", "osrm-partition", "osrm-customize"} {
-		if _, err := exec.LookPath(bin); err != nil {
-			return fmt.Errorf("'%s' nicht im PATH. macOS: 'brew install osrm-backend'", bin)
+		p := binutil.Resolve(bin)
+		if p == "" {
+			return fmt.Errorf("'%s' nicht gefunden — Binary neben kilometrix(.exe) legen oder in den PATH aufnehmen (macOS: brew install osrm-backend)", bin)
 		}
+		resolved[bin] = p
 	}
 
 	// MkdirAll legt das Verzeichnis (inkl. Elternpfade) an; existiert es schon, ok.
@@ -89,9 +93,10 @@ func BuildGraph(opt GraphOptions, log func(string)) error {
 	}
 	for _, s := range steps {
 		logf(log, "==> %s", s.name)
-		cmd := exec.Command(s.name, s.args...)
+		cmd := exec.Command(resolved[s.name], s.args...)
 		cmd.Stdout = opt.Output // Tool-Ausgabe in den gewünschten Writer leiten
 		cmd.Stderr = opt.Output
+		binutil.HideWindow(cmd) // Windows: kein sichtbares Konsolenfenster
 		// Run() startet das Tool UND wartet auf sein Ende (anders als Start()).
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("%s fehlgeschlagen: %w", s.name, err)
@@ -121,9 +126,9 @@ func stageProfile(profilePath string, log func(string)) (string, error) {
 // locateCarLua sucht das von osrm-backend mitgelieferte car.lua relativ zur
 // osrm-extract-Binary: <bin>/../share/osrm/profiles/car.lua.
 func locateCarLua() (string, error) {
-	bin, err := exec.LookPath("osrm-extract")
-	if err != nil {
-		return "", err
+	bin := binutil.Resolve("osrm-extract")
+	if bin == "" {
+		return "", fmt.Errorf("osrm-extract nicht gefunden")
 	}
 	// EvalSymlinks folgt symbolischen Links (brew installiert oft per Symlink),
 	// damit wir den ECHTEN Installationsort finden.

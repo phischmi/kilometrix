@@ -4,12 +4,7 @@ package osrm
 
 import (
 	"os/exec"
-	"syscall"
 )
-
-func setProcAttr(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-}
 
 func sendStop(cmd *exec.Cmd) error {
 	if cmd.Process == nil {

@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/exec" // externe Programme starten (wie Pythons subprocess)
 	"path/filepath"
-	"runtime"
 	"strconv"
-	"strings"
 	"time"
+
+	"github.com/phischmi/kilometrix/internal/binutil"
 )
 
 // Process kapselt einen osrm-routed-Subprozess.
@@ -34,36 +34,6 @@ func (p *Process) BaseURL() string {
 	return fmt.Sprintf("http://%s:%d", p.Host, p.Port)
 }
 
-// resolveBin sucht ein Binary: erst PATH, dann neben dem eigenen Executable.
-// Auf Windows wird ggf. ".exe" angehängt. Gibt "" zurück, wenn nichts gefunden.
-func resolveBin(name string) string {
-	// Absoluter Pfad oder expliziter Relative-Pfad mit Separator → direkt prüfen.
-	if filepath.IsAbs(name) || strings.ContainsRune(name, filepath.Separator) {
-		if _, err := os.Stat(name); err == nil {
-			return name
-		}
-		return ""
-	}
-	// Auf Windows ".exe" ergänzen, falls noch nicht vorhanden.
-	candidates := []string{name}
-	if runtime.GOOS == "windows" && !strings.HasSuffix(strings.ToLower(name), ".exe") {
-		candidates = append(candidates, name+".exe")
-	}
-	for _, n := range candidates {
-		if p, err := exec.LookPath(n); err == nil {
-			return p
-		}
-		// Neben dem eigenen Executable suchen (typisch: alles in einem Ordner).
-		if exe, err := os.Executable(); err == nil {
-			p := filepath.Join(filepath.Dir(exe), n)
-			if _, err := os.Stat(p); err == nil {
-				return p
-			}
-		}
-	}
-	return ""
-}
-
 // GraphExists prüft, ob der Graph (Basis-Pfad + .*-Dateien) vorhanden ist.
 // Freie Funktion (kein Receiver), daher von außen als osrm.GraphExists(...) nutzbar.
 func GraphExists(graphPath string) bool {
@@ -79,7 +49,7 @@ func GraphExists(graphPath string) bool {
 
 // Start startet osrm-routed und wartet, bis er bereit ist.
 func (p *Process) Start(readyTimeout time.Duration) error {
-	bin := resolveBin(p.Binary)
+	bin := binutil.Resolve(p.Binary)
 	if bin == "" {
 		return fmt.Errorf("'%s' nicht gefunden — Binary neben kilometrix(.exe) legen oder OSRM_ROUTED_BIN setzen (macOS: brew install osrm-backend)", p.Binary)
 	}
@@ -108,7 +78,7 @@ func (p *Process) Start(readyTimeout time.Duration) error {
 	p.cmd = exec.Command(p.Binary, args...)
 	p.cmd.Stdout = os.Stderr // osrm-Logs auf stderr durchreichen
 	p.cmd.Stderr = os.Stderr
-	setProcAttr(p.cmd) // Windows: kein sichtbares Konsolenfenster
+	binutil.HideWindow(p.cmd) // Windows: kein sichtbares Konsolenfenster
 	// Start() startet den Prozess und kehrt sofort zurück (nicht-blockierend),
 	// anders als Run(), das auf das Ende warten würde.
 	if err := p.cmd.Start(); err != nil {
