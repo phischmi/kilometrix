@@ -69,7 +69,7 @@ func BuildGraph(opt GraphOptions, log func(string)) error {
 		if err != nil {
 			return err
 		}
-		if err := download(opt.PBFURL, f); err != nil {
+		if err := download(opt.PBFURL, f, log); err != nil {
 			f.Close() // bei Fehler trotzdem schließen
 			return fmt.Errorf("PBF-Download fehlgeschlagen: %w", err)
 		}
