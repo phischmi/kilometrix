@@ -81,7 +81,7 @@ func Load() Settings {
 		OSRMRoutedPort:         getInt("OSRM_ROUTED_PORT", 5001),
 		ManageOSRMRouted:       getBool("MANAGE_OSRM_ROUTED", true),
 		OSRMRoutedURL:          getStr("OSRM_ROUTED_URL", ""),
-		OSRMRoutedVerbosity:    getStr("OSRM_ROUTED_VERBOSITY", "WARNING"),
+		OSRMRoutedVerbosity:    getStr("OSRM_ROUTED_VERBOSITY", "INFO"),
 		OSRMRoutedMmap:         getBool("OSRM_ROUTED_MMAP", mmapDefault),
 		OSRMRoutedReadyTimeout: getInt("OSRM_ROUTED_READY_TIMEOUT", 0),
 		GeocodePath:         getStr("GEOCODE_PATH", "data/plz_centroids.csv"),
