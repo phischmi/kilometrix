@@ -24,10 +24,10 @@ func main() {
 	// ein Options-Struct mit benannten Feldern.
 	err := wails.Run(&options.App{
 		Title:     "Kilometrix — Backend",
-		Width:     980,
-		Height:    760,
-		MinWidth:  720,
-		MinHeight: 560,
+		Width:     1100,
+		Height:    900,
+		MinWidth:  800,
+		MinHeight: 660,
 		AssetServer: &assetserver.Options{
 			Assets: assets, // das oben eingebettete Frontend ausliefern
 		},
