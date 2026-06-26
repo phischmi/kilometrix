@@ -6,7 +6,7 @@
   <title>Kilometrix — Backend</title>
 </head>
 <body>
-  <div id="app" class="mx-auto flex min-h-full max-w-4xl flex-col gap-4 p-5">
+  <div id="app" class="mx-auto flex h-full max-w-4xl flex-col gap-4 p-5">
 
     <!-- Header -->
     <header class="flex items-center gap-3">
@@ -102,12 +102,12 @@
     </div>
 
     <!-- Log-Konsole -->
-    <section class="card flex min-h-48 flex-1 flex-col">
+    <section class="card flex min-h-0 flex-1 flex-col">
       <div class="mb-2 flex items-center gap-2">
         <div class="card-title mb-0 flex-1">Protokoll</div>
         <button id="btnClearLog" class="btn btn-ghost px-2 py-1 text-xs">Leeren</button>
       </div>
-      <pre id="logOutput" class="flex-1 overflow-auto rounded-lg bg-[#0f141b] p-3 font-mono text-[12px] leading-relaxed text-[#c7cdd6] whitespace-pre-wrap"></pre>
+      <pre id="logOutput" class="min-h-0 flex-1 overflow-y-auto rounded-lg bg-[#0f141b] p-3 font-mono text-[12px] leading-relaxed text-[#c7cdd6] whitespace-pre-wrap"></pre>
     </section>
 
   </div>
