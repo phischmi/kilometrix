@@ -146,7 +146,7 @@ func (p *Process) Stop() error {
 	// kein zweites Wait() starten (das wäre ein Fehler).
 	select {
 	case <-p.waitCh:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
 		_ = p.cmd.Process.Kill()
 		<-p.waitCh
 	}

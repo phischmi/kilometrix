@@ -2,15 +2,10 @@
 
 package osrm
 
-import (
-	"os/exec"
-)
+import "os/exec"
 
-func sendStop(cmd *exec.Cmd) error {
-	if cmd.Process == nil {
-		return nil
-	}
-	// Signal(os.Interrupt) ist auf Windows nicht unterstützt; wir beenden hart.
-	// osrm-routed hat keinen relevanten Cleanup, Kill ist hier vertretbar.
-	return cmd.Process.Kill()
-}
+// sendStop ist auf Windows ein No-op: Ctrl+C wird von Windows an alle Prozesse der
+// Konsolen-Gruppe gesendet, also hat osrm-routed das Signal bereits empfangen und
+// fährt selbst herunter. Ein sofortiges Kill() würde das laufende mmap-Teardown
+// unterbrechen und den Prozess hängen lassen. Stop() killt nach dem Timeout hart.
+func sendStop(_ *exec.Cmd) error { return nil }
