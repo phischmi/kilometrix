@@ -13,6 +13,7 @@ import (
 	"sort" // Slices sortieren (deterministische Ausgabe)
 	"strconv"
 	"strings"
+	"time"
 )
 
 // GeocodeOptions steuert den Geocoding-Bau.
@@ -49,7 +50,7 @@ func BuildGeocode(opt GeocodeOptions, log func(string)) error {
 	defer os.Remove(tmp.Name()) // Datei am Ende löschen
 	defer tmp.Close()           // vorher schließen
 
-	if err := download(zipURL, tmp); err != nil {
+	if err := download(zipURL, tmp, log); err != nil {
 		return fmt.Errorf("Download fehlgeschlagen: %w", err)
 	}
 	if err := tmp.Sync(); err != nil { // Puffer auf die Platte zwingen, bevor wir wieder lesen
@@ -65,8 +66,8 @@ func BuildGeocode(opt GeocodeOptions, log func(string)) error {
 	return nil
 }
 
-// download lädt eine URL und schreibt den Body in dst (irgendein io.Writer).
-func download(url string, dst io.Writer) error {
+// download lädt eine URL, schreibt den Body in dst und meldet Fortschritt via log.
+func download(url string, dst io.Writer, log func(string)) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -75,8 +76,60 @@ func download(url string, dst io.Writer) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	_, err = io.Copy(dst, resp.Body) // gestreamt kopieren
+	pw := &progressWriter{dst: dst, length: resp.ContentLength, start: time.Now(), lastLog: time.Now(), log: log}
+	_, err = io.Copy(pw, resp.Body)
+	if err == nil && log != nil {
+		elapsed := time.Since(pw.start).Seconds()
+		speed := float64(pw.total) / elapsed
+		log(fmt.Sprintf("  fertig: %s in %.1fs (%s/s)", fmtBytes(pw.total), elapsed, fmtBytes(int64(speed))))
+	}
 	return err
+}
+
+// progressWriter leitet Bytes weiter und meldet Fortschritt ca. alle 500 ms.
+type progressWriter struct {
+	dst     io.Writer
+	total   int64
+	lastN   int64
+	length  int64 // -1 = unbekannt
+	start   time.Time
+	lastLog time.Time
+	log     func(string)
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.dst.Write(p)
+	pw.total += int64(n)
+	if pw.log != nil && time.Since(pw.lastLog) >= 500*time.Millisecond {
+		elapsed := time.Since(pw.lastLog).Seconds()
+		speed := float64(pw.total-pw.lastN) / elapsed
+		var msg string
+		if pw.length > 0 {
+			pct := int(float64(pw.total) / float64(pw.length) * 100)
+			msg = fmt.Sprintf("  %s / %s (%d%%)  %s/s",
+				fmtBytes(pw.total), fmtBytes(pw.length), pct, fmtBytes(int64(speed)))
+		} else {
+			msg = fmt.Sprintf("  %s  %s/s", fmtBytes(pw.total), fmtBytes(int64(speed)))
+		}
+		pw.log(msg)
+		pw.lastLog = time.Now()
+		pw.lastN = pw.total
+	}
+	return n, err
+}
+
+// fmtBytes formatiert eine Bytezahl als lesbare Größe (B / KB / MB / GB).
+func fmtBytes(n int64) string {
+	switch {
+	case n >= 1<<30:
+		return fmt.Sprintf("%.2f GB", float64(n)/(1<<30))
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // acc ("accumulator") sammelt pro PLZ die Summen der Koordinaten und die Anzahl,

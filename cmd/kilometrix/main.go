@@ -96,19 +96,12 @@ Befehle:
 // cmdServe verarbeitet `kilometrix serve [...]`. `args` sind die Argumente NACH
 // dem Wort "serve". []string ist ein Slice von Strings.
 func cmdServe(args []string) {
-	// Ein FlagSet ist eine eigene Gruppe von CLI-Flags für diesen Subcommand.
-	// flag.ExitOnError = bei Parse-Fehler Programm beenden.
+	logEnvDiag(stdoutLog)
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	// fs.String(name, default, hilfetext) registriert ein Flag und gibt einen
-	// *Pointer* auf den späteren Wert zurück (deshalb der Stern bei *host weiter
-	// unten). Der Wert steht erst nach fs.Parse(...) fest.
 	host := fs.String("host", "", "Bind-Host (Default aus ADDIN_HOST)")
 	port := fs.Int("port", 0, "Bind-Port (Default aus ADDIN_PORT)")
 	tls := fs.Bool("tls", true, "HTTPS mit lokalem Zertifikat (false hinter Reverse Proxy)")
 	certDir := fs.String("cert-dir", "certs", "Verzeichnis für localhost-Zertifikat")
-	// fs.Parse füllt die Flags. Der Rückgabewert (ein Fehler) interessiert hier
-	// nicht, weil ExitOnError schon abbricht; `_ =` wirft ihn bewusst weg.
-	// (Go zwingt dich sonst, jeden Rückgabewert zu benutzen.)
 	_ = fs.Parse(args)
 
 	// runtime.Serve bekommt eine Struct mit den Optionen. Der Stern `*host`
@@ -124,6 +117,7 @@ func cmdServe(args []string) {
 }
 
 func cmdBuildGraph(args []string) {
+	logEnvDiag(stdoutLog)
 	fs := flag.NewFlagSet("build-graph", flag.ExitOnError)
 	pbf := fs.String("pbf-url", "", "PBF-URL (Default: Geofabrik germany-latest)")
 	dataDir := fs.String("data-dir", "data", "Zielverzeichnis")
@@ -142,13 +136,12 @@ func cmdBuildGraph(args []string) {
 }
 
 func cmdBuildGeocode(args []string) {
+	logEnvDiag(stdoutLog)
 	fs := flag.NewFlagSet("build-geocode", flag.ExitOnError)
 	country := fs.String("country", "DE", "ISO-Land (GeoNames)")
 	zipURL := fs.String("zip-url", "", "Override der Zip-URL")
 	out := fs.String("out", "data/plz_centroids.csv", "Ziel-CSV")
 	_ = fs.Parse(args)
-
-	logEnvDiag(stdoutLog)
 
 	err := build.BuildGeocode(build.GeocodeOptions{
 		Country: *country, ZipURL: *zipURL, OutPath: *out,

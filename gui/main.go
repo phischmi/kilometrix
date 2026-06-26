@@ -32,7 +32,8 @@ func main() {
 			Assets: assets, // das oben eingebettete Frontend ausliefern
 		},
 		BackgroundColour: &options.RGBA{R: 247, G: 248, B: 246, A: 1}, // helle Taskpane-Fläche
-		OnStartup:        app.startup,                                  // Callback: Wails übergibt den Context
+		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown, // Kindprozesse beim Schließen beenden
 		// Bind macht die exportierten Methoden von `app` im Frontend als
 		// JS-Funktionen aufrufbar. []interface{} ist ein Slice beliebiger Werte.
 		Bind: []interface{}{
