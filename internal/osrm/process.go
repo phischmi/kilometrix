@@ -127,10 +127,10 @@ func (p *Process) waitReady(timeout time.Duration) error {
 			resp, err := client.Get(probe)
 			if err == nil {
 				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					log.Printf("osrm-routed bereit (%.0f s)", time.Since(start).Seconds())
-					return nil
-				}
+				// Jede HTTP-Antwort bedeutet: Server läuft. NoSegment (400) ist ok —
+				// Testkoordinaten schnappen nicht zwingend auf den LKW-Graph.
+				log.Printf("osrm-routed bereit (%.0f s)", time.Since(start).Seconds())
+				return nil
 			}
 		}
 	}
