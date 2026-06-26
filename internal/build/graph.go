@@ -106,32 +106,37 @@ func BuildGraph(opt GraphOptions, log func(string)) error {
 	return nil
 }
 
-// stageProfile kopiert das LKW-Profil neben das von osrm-backend mitgelieferte car.lua
-// (dort liegt das benötigte lib/) und liefert den Zielpfad.
+// stageProfile stellt sicher, dass lib/ neben dem Profil liegt, und gibt dessen Pfad zurück.
+// Liegt lib/ bereits neben dem Profil, ist nichts zu tun.
+// Andernfalls wird lib/ aus der OSRM-Installation (neben car.lua) dorthin kopiert.
 func stageProfile(profilePath string, log func(string)) (string, error) {
+	profileDir := filepath.Dir(profilePath)
+	libDst := filepath.Join(profileDir, "lib")
+
+	// lib/ schon vorhanden → direkt verwenden.
+	if _, err := os.Stat(libDst); err == nil {
+		return profilePath, nil
+	}
+
+	// lib/ aus der OSRM-Installation kopieren.
 	carLua, err := locateCarLua()
 	if err != nil {
-		// Kein car.lua gefunden (typisch auf Windows: Release enthält keine Lua-Profile).
-		// Prüfen ob lib/ neben dem Profil liegt — dann funktioniert truck.lua direkt.
-		libDir := filepath.Join(filepath.Dir(profilePath), "lib")
-		if _, statErr := os.Stat(libDir); statErr == nil {
-			logf(log, "Hinweis: car.lua nicht gefunden, nutze Profil direkt (lib/ vorhanden): %s", profilePath)
-			return profilePath, nil
-		}
 		return "", fmt.Errorf(
-			"OSRM-Lua-Bibliothek nicht gefunden.\n" +
-				"Windows: Lade den OSRM-Quellcode der passenden Version herunter und kopiere\n" +
-				"den Ordner profiles/lib/ in das Verzeichnis %s/lib/\n" +
+			"OSRM-Lua-Bibliothek (lib/) nicht gefunden.\n"+
+				"Kopiere den Ordner profiles/lib/ aus dem OSRM-Quellcode nach %s\\lib\\\n"+
 				"Quelle: https://github.com/Project-OSRM/osrm-backend/tree/master/profiles/lib",
-			filepath.Dir(profilePath),
+			profileDir,
 		)
 	}
-	dstDir := filepath.Dir(carLua)                           // Verzeichnis von car.lua
-	dst := filepath.Join(dstDir, filepath.Base(profilePath)) // Zielpfad = dortiges Verzeichnis + Dateiname
-	if err := copyFile(profilePath, dst); err != nil {
-		return "", fmt.Errorf("Profil kopieren fehlgeschlagen: %w", err)
+	libSrc := filepath.Join(filepath.Dir(carLua), "lib")
+	if _, err := os.Stat(libSrc); err != nil {
+		return "", fmt.Errorf("lib/ nicht neben car.lua gefunden: %s", libSrc)
 	}
-	return dst, nil
+	logf(log, "Kopiere OSRM lib/ nach %s", libDst)
+	if err := copyDir(libSrc, libDst); err != nil {
+		return "", fmt.Errorf("lib/ kopieren fehlgeschlagen: %w", err)
+	}
+	return profilePath, nil
 }
 
 // locateCarLua sucht das von osrm-backend mitgelieferte car.lua relativ zur
@@ -160,6 +165,26 @@ func locateCarLua() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("car.lua nicht gefunden (weder in ../share/osrm/profiles/ noch in profiles/ neben osrm-extract)")
+}
+
+// copyDir kopiert ein Verzeichnis flach (eine Ebene, keine Rekursion — lib/ hat keine Unterordner).
+func copyDir(src, dst string) error {
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue // lib/ hat keine Unterverzeichnisse
+		}
+		if err := copyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // copyFile kopiert eine Datei. Schönes Beispiel für defer + io.Copy.
