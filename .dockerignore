@@ -1,7 +1,5 @@
 .git
 .github/
-# GUI (eigenes Modul, gehört nicht ins Backend-Image)
-gui/
 **/node_modules/
 # Daten/Secrets/Build-Artefakte
 data/

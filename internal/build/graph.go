@@ -17,7 +17,7 @@ type GraphOptions struct {
 	ProfilePath string // LKW-Profil (Default: profiles/truck.lua)
 	// Output-Writer für die Tool-Ausgaben (osrm-extract etc.). nil → stderr.
 	// io.Writer ist ein Interface ("etwas, in das man schreiben kann") — so kann
-	// der Aufrufer die Ausgabe umlenken (Datei, Puffer, GUI, ...).
+	// der Aufrufer die Ausgabe umlenken (Datei, Puffer, ...).
 	Output io.Writer
 }
 
@@ -26,7 +26,7 @@ type GraphOptions struct {
 // im PATH liegen (macOS: 'brew install osrm-backend').
 //
 // `log func(string)` ist ein Funktions-Parameter: BuildGraph ruft diese Funktion
-// auf, um Fortschritt zu melden, ohne zu wissen, wohin (CLI -> println, GUI -> Event).
+// auf, um Fortschritt zu melden, ohne zu wissen, wohin (CLI -> println, Log -> Datei).
 func BuildGraph(opt GraphOptions, log func(string)) error {
 	// Defaults setzen, wo der Aufrufer nichts angegeben hat.
 	if opt.DataDir == "" {

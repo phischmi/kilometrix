@@ -1,20 +1,11 @@
-name: GUI build & release
+name: Release-Binaries
 
-# Zwei Aufgaben:
-#  1. CI bei GUI/Frontend-Änderungen (Push auf main, paths-gefiltert auf gui/**):
-#     nur der Wails-Windows-Build als Validierung. Die GUI MUSS nativ auf
-#     Windows gebaut werden — Wails kann nicht cross-compilen (WebView2-nativ).
-#  2. Release per "Run workflow" mit tag-Input: baut Backend-Binaries
-#     (Cross-Compile) + GUI und hängt alles an ein GitHub-Release. Das Tag
-#     legt action-gh-release serverseitig an (der Git-Proxy erlaubt keine
-#     Tag-Pushes), daher kein push-tags-Trigger.
+# Release per "Run workflow" mit tag-Input: baut die Backend-Binaries
+# (Cross-Compile vom Linux-Runner) und hängt sie an ein GitHub-Release. Das Tag
+# legt action-gh-release serverseitig an (der Git-Proxy erlaubt keine Tag-Pushes),
+# daher kein push-tags-Trigger.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "gui/**"
-      - ".github/workflows/release.yml"
   workflow_dispatch:
     inputs:
       tag:
@@ -27,16 +18,10 @@ permissions:
 
 env:
   GO_VERSION: "1.23"
-  WAILS_VERSION: "v2.12.0"
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Backend: Cross-Compile vom Linux-Runner für alle Zielplattformen.
-  # Kein cgo (CGO_ENABLED=0) → reiner Go-Cross-Compile, kein Windows/macOS nötig.
-  # Nur fürs Release (Dispatch) — bei reinen GUI-Pushes nicht gebraucht.
-  # ---------------------------------------------------------------------------
+  # Cross-Compile vom Linux-Runner für alle Zielplattformen (CGO_ENABLED=0).
   backend:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -69,66 +54,11 @@ jobs:
           path: ${{ env.ARTIFACT }}
           if-no-files-found: error
 
-  # ---------------------------------------------------------------------------
-  # Wails-GUI: nativer Windows-Build (kein Cross-Compile möglich).
-  # ---------------------------------------------------------------------------
-  gui-windows:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: gui
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install NSIS
-        # makensis ist auf windows-latest NICHT vorinstalliert und wird von
-        # choco auch nicht in den PATH gelegt -> Verzeichnis selbst ergänzen,
-        # sonst überspringt Wails den Installer nur mit einer Warnung.
-        shell: pwsh
-        run: |
-          choco install nsis -y --no-progress
-          $makensis = Get-ChildItem "C:\Program Files*\NSIS\makensis.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $makensis) { throw "makensis nach choco install nicht gefunden" }
-          $makensis.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
-
-      - name: Build GUI (windows/amd64)
-        # -nsis erzeugt zusätzlich den Installer; Ergebnis unter gui/build/bin.
-        run: wails build -platform windows/amd64 -nsis -ldflags "-s -w"
-
-      - name: Verify installer was built
-        # Hart abbrechen, falls NSIS doch nicht griff (sonst stilles Fehlen).
-        # working-directory ist gui, daher Pfad relativ dazu (build/bin).
-        shell: pwsh
-        run: |
-          if (-not (Get-ChildItem build/bin -Filter *installer*.exe)) {
-            throw "NSIS-Installer fehlt — makensis nicht gefunden?"
-          }
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: kilometrix-gui-windows-amd64
-          path: |
-            gui/build/bin/*.exe
-          if-no-files-found: error
-
-  # ---------------------------------------------------------------------------
-  # Release: nur per Dispatch mit gesetztem tag-Input — sammelt alle
-  # Artefakte und legt Tag + Release serverseitig an.
-  # ---------------------------------------------------------------------------
+  # Release: nur wenn ein tag-Input gesetzt ist — sammelt die Artefakte und
+  # legt Tag + Release serverseitig an.
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.tag != ''
-    needs: [backend, gui-windows]
+    if: inputs.tag != ''
+    needs: [backend]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -140,7 +70,6 @@ jobs:
       - name: Create / update release
         uses: softprops/action-gh-release@v2
         with:
-          # action-gh-release legt das Tag (am aktuellen Commit) selbst an.
           tag_name: ${{ inputs.tag }}
           files: dist/**/*
           fail_on_unmatched_files: true

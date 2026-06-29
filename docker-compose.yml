@@ -1,9 +1,9 @@
-# Kilometrix — zentraler Betrieb (PoC) hinter Traefik mit Let's Encrypt.
+# Kilometrix — zentraler Betrieb hinter Traefik mit Let's Encrypt.
 # Diese Variante BAUT das App-Image lokal (build: .). Wer das Image aus GHCR ziehen
 # will (CI-Build), nutzt stattdessen docker-compose.prod.yml.
 #
 # Voraussetzungen:
-#   - Traefik läuft bereits auf dem NAS und terminiert TLS (externes Docker-Netz).
+#   - Traefik läuft bereits auf dem Server und terminiert TLS (externes Docker-Netz).
 #   - data/germany.osrm.* liegt neben dieser Datei (mit derselben osrm-backend-Version
 #     gebaut wie OSRM_IMAGE — v26.6.5 passt zum vorhandenen Graphen).
 #   - .env enthält AUTH_SECRET (z. B.  openssl rand -hex 32).

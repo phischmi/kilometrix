@@ -16,10 +16,6 @@ certs/
 /dist/
 *.test
 
-# GUI-Build (Wails)
-gui/build/bin/
-gui/frontend/node_modules/
-
 # OS
 .DS_Store
 
