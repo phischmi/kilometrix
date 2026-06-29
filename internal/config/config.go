@@ -82,7 +82,10 @@ func Load() Settings {
 		ManageOSRMRouted:       getBool("MANAGE_OSRM_ROUTED", true),
 		OSRMRoutedURL:          getStr("OSRM_ROUTED_URL", ""),
 		OSRMRoutedVerbosity:    getStr("OSRM_ROUTED_VERBOSITY", "INFO"),
-		OSRMRoutedMmap:         getBool("OSRM_ROUTED_MMAP", mmapDefault),
+		// mmap mappt den Graph von der Platte statt ihn komplett ins RAM zu laden:
+		// spart Arbeitsspeicher im Leerlauf (wichtig auf RAM-knappen Servern), erste
+		// Abfrage minimal langsamer. Default an.
+		OSRMRoutedMmap:         getBool("OSRM_ROUTED_MMAP", true),
 		OSRMRoutedReadyTimeout: getInt("OSRM_ROUTED_READY_TIMEOUT", 0),
 		GeocodePath:         getStr("GEOCODE_PATH", "data/plz_centroids.csv"),
 		Workers:             getInt("WORKERS", 8),

@@ -10,11 +10,10 @@ die hergeleiteten Koordinaten). **Keine externe Routing-API** (keine Limits, kei
 keine Datenweitergabe).
 
 ## Harte Randbedingungen (nicht verhandelbar)
-- **Client/Entwicklung ohne Docker:** Auf dem **Windows-Firmenlaptop** (Installation via
-  **Scoop**, keine Admin-Rechte annehmen) und auf **macOS** (Apple Silicon; ggf. x86_64)
-  läuft das Backend als natives Go-Binary, die GUI als native Wails-App.
-- **Zentraler Betrieb auf dem Linux-NAS via Docker** (Compose hinter Traefik): `osrm` + `app`
-  als Container — siehe `docker-compose*.yml`. Docker gilt nur für die NAS, nicht für den Laptop.
+- **Produktivbetrieb zu 100 % zentral** auf einem **dezentralen Server via Docker**
+  (Compose hinter Traefik): `osrm` + `app` als Container — siehe `docker-compose*.yml`.
+- **Lokal nur zu Testzwecken:** Auf macOS/Windows läuft das Backend als natives Go-Binary,
+  das `osrm-routed` selbst verwaltet. Kein Produktivweg.
 - **Max. 16 GB RAM** auf jeder Zielmaschine.
 - Offline-fähig nach einmaligem Daten-Setup.
 
@@ -24,9 +23,7 @@ keine Datenweitergabe).
   `token`, `config`. README ist die Quelle der Wahrheit.
 - **Office.js-Excel-Add-in** ([`addin/`](addin)) — die Bedienoberfläche (Task Pane, liest/schreibt
   das Blatt direkt). Wird vom Backend same-origin über HTTPS ausgeliefert.
-- **Wails-Desktop-GUI** ([`gui/`](gui), eigenes Go-Modul + Vanilla TS/Vite/Tailwind) — steuert
-  das Binary über dessen Subcommands. **Nicht** im Docker-Image (separat gehalten).
-- OSRM fürs Routing über **osrm-routed** (lokaler HTTP-Subprozess oder NAS-Container).
+- OSRM fürs Routing über **osrm-routed** (zentral als eigener Container; lokal als Subprozess).
 
 ## OSRM-Setup (hier steckt die Komplexität)
 OSRM ist C++. `kilometrix build-graph` orchestriert die CLI-Tools; das Routing spricht
@@ -40,18 +37,18 @@ OSRM ist C++. `kilometrix build-graph` orchestriert die CLI-Tools; das Routing s
 ### Graph einmal bauen, dann verteilen
 `kilometrix build-graph` (osrm-extract → -partition → -customize, MLD) ist der speicherhungrige
 Teil: `germany-latest.osm.pbf` von Geofabrik (~4 GB), Peak ~7,7 GB beim Customize (passt knapp in
-16 GB). Die erzeugten `data/germany.osrm.*` sind **portabel** — einmal bauen, dann auf
-Mac/Windows/NAS kopieren. Graph + osrm-routed müssen dieselbe osrm-backend-Version haben.
+16 GB). Die erzeugten `data/germany.osrm.*` sind **portabel** — einmal bauen, dann auf den
+Server kopieren. Graph + osrm-routed müssen dieselbe osrm-backend-Version haben.
 
 ### Routing-Strategie
 - `osrm-routed`, Abfrage per HTTP auf `/route/v1/driving/{lon},{lat};{lon},{lat}?overview=false`.
   Hinter dem schmalen Interface `routing.Engine` ([`internal/routing`](internal/routing)) →
   `HTTPEngine`. Achtung: OSRM erwartet (lon, lat).
-- **Zwei Betriebsarten:** lokal startet `serve` osrm-routed selbst als Subprozess
-  (`MANAGE_OSRM_ROUTED=true`, [`internal/osrm`](internal/osrm)); auf dem NAS läuft osrm-routed als
-  eigener Container, das Backend zeigt nur darauf (`MANAGE_OSRM_ROUTED=false`, `OSRM_ROUTED_URL`).
+- **Zwei Betriebsarten:** zentral läuft osrm-routed als eigener Container, das Backend zeigt nur
+  darauf (`MANAGE_OSRM_ROUTED=false`, `OSRM_ROUTED_URL`); lokal (Test) startet `serve` osrm-routed
+  selbst als Subprozess (`MANAGE_OSRM_ROUTED=true`, [`internal/osrm`](internal/osrm)).
 - **`--mmap` / `OSRM_ROUTED_MMAP` (Default an):** Graph von der Platte mappen statt ins RAM laden
-  → weniger Leerlauf-Speicher (wichtig auf der RAM-knappen NAS), erste Abfrage minimal langsamer.
+  → weniger Leerlauf-Speicher (wichtig auf RAM-knappen Servern), erste Abfrage minimal langsamer.
 - Graph standardmäßig mit **LKW-Profil** `profiles/truck.lua` (von car.lua abgeleitet).
 
 ## Geocoding (LKZ/PLZ → Zentroid)
@@ -86,9 +83,9 @@ Mac/Windows/NAS kopieren. Graph + osrm-routed müssen dieselbe osrm-backend-Vers
 ```
 .
 ├── CLAUDE.md  ·  README.md (Quelle der Wahrheit)  ·  go.mod  ·  .env.example
-├── Dockerfile               # Multi-Stage Go → distroless (Backend-Image, NAS)
-├── docker-compose.yml       # NAS: osrm + app, App-Image lokal gebaut
-├── docker-compose.prod.yml  # NAS: App-Image aus GHCR (CI-Build) ziehen
+├── Dockerfile               # Multi-Stage Go → distroless (Backend-Image, Server)
+├── docker-compose.yml       # Server: osrm + app, App-Image lokal gebaut
+├── docker-compose.prod.yml  # Server: App-Image aus GHCR (CI-Build) ziehen
 ├── data/                    # germany.osrm.*, plz_centroids.csv (gitignored)
 ├── profiles/truck.lua       # LKW-Profil für build-graph
 ├── cmd/kilometrix/          # CLI-Entry: serve | build-graph | build-geocode | token | config
@@ -102,8 +99,7 @@ Mac/Windows/NAS kopieren. Graph + osrm-routed müssen dieselbe osrm-backend-Vers
 │   ├── build/    # build-graph (orchestriert osrm-*) + build-geocode (nativ)
 │   ├── tlscert/  # selbstsigniertes localhost-Zertifikat (HTTPS lokal)
 │   └── runtime/  # serve-Verdrahtung + graceful shutdown
-├── addin/                   # Office.js-Add-in (manifest*.xml, taskpane.html, styles.css, app.js)
-└── gui/                     # Wails-App (eigenes Modul; app.go + frontend/, nicht im Docker)
+└── addin/                   # Office.js-Add-in (manifest*.xml, taskpane.html, styles.css, app.js)
 ```
 
 ## Commands
@@ -116,13 +112,10 @@ go test ./...
 ./kilometrix build-graph
 ./kilometrix build-geocode
 
-# Lokal starten (HTTPS, startet osrm-routed selbst)
+# Lokal starten zu Testzwecken (HTTPS, startet osrm-routed selbst)
 ./kilometrix serve                            # https://127.0.0.1:8443/addin/taskpane.html
 
-# GUI (Dev)
-cd gui && wails dev
-
-# NAS (Docker)
+# Server (Docker)
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml exec app kilometrix token create --name X --days 90
@@ -150,5 +143,5 @@ docker compose -f docker-compose.prod.yml exec app kilometrix token create --nam
    gleichem `AUTH_SECRET` gültig).
 8. ✅ Zentraler Betrieb via Docker (osrm + app hinter Traefik); App-Image = Multi-Stage Go →
    distroless. Compose unverändert (gleiche Env-Namen, Traefik-Port 8000).
-9. ✅ Wails-GUI zur Backend-Steuerung (Design folgt dem Task Pane + System-Dark-Mode); separat,
-   nicht im Docker-Image.
+9. ✅ Produktivbetrieb zu 100 % serverseitig; lokales Binary nur noch zu Testzwecken. Die frühere
+   Wails-Desktop-GUI ist entfernt.
